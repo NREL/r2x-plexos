@@ -1,3 +1,5 @@
+"""PLEXOS configuration class."""
+
 from typing import Annotated
 
 from pydantic import Field

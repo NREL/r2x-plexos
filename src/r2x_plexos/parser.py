@@ -10,6 +10,8 @@ from .config import PLEXOSConfig
 
 
 class PLEXOSParser(BaseParser):
+    """PLEXOS parser."""
+
     def __init__(
         self,
         config: PLEXOSConfig,
@@ -31,6 +33,7 @@ class PLEXOSParser(BaseParser):
         self.config: PLEXOSConfig = config
 
     def build_system_components(self) -> None:
+        """Create PLEXOS components."""
         logger.info("Building PLEXOS system components...")
 
         total_components = len(list(self.system.get_components(Component)))

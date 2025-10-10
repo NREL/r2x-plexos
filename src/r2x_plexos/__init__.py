@@ -1,6 +1,6 @@
 """R2X PLEXOS Plugin.
 
-A plugin for parsing PLEXO model data into the R2X framework using infrasys components.
+A plugin for parsing PLEXOS model data into the R2X framework using infrasys components.
 """
 
 from importlib.metadata import version

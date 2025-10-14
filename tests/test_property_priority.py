@@ -1,7 +1,6 @@
 """Tests for PlexosProperty priority resolution."""
 
-from r2x_plexos.models.context import scenario_priority
-from r2x_plexos.models.property import PLEXOSPropertyValue
+from r2x_plexos import PLEXOSPropertyValue, scenario_priority
 
 
 def test_get_value_no_priority_returns_dict():

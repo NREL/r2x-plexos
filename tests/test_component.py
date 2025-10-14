@@ -4,10 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
-from r2x_plexos.models import PLEXOSProperty
-from r2x_plexos.models.component import PLEXOSComponent
-from r2x_plexos.models.context import scenario_priority
-from r2x_plexos.models.property import PLEXOSPropertyValue
+from r2x_plexos import PLEXOSComponent, PLEXOSProperty, PLEXOSPropertyValue, scenario_priority
 
 
 class Generator(PLEXOSComponent):

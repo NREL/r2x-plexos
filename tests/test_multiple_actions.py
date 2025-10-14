@@ -1,6 +1,6 @@
 """Tests for multiple actions on a single property."""
 
-from r2x_plexos.models.property import PLEXOSPropertyValue
+from r2x_plexos import PLEXOSPropertyValue
 
 
 def test_multiple_actions_same_property():

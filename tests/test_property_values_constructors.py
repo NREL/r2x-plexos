@@ -1,6 +1,6 @@
-"""Tests for PlexosProperty factory methods."""
+"""Tests for PlexosProperty constructor methods."""
 
-from r2x_plexos.models.property import PLEXOSPropertyValue
+from r2x_plexos import PLEXOSPropertyValue
 
 
 def test_from_dict_scenarios():

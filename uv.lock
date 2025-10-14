@@ -1355,7 +1355,6 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-coverage" },
-    { name = "r2x-core" },
     { name = "ruff" },
 ]
 docs = [
@@ -1383,7 +1382,6 @@ dev = [
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-coverage", specifier = ">=0.0" },
-    { name = "r2x-core", git = "https://github.com/NREL/r2x-core?branch=pesap%2Fupgrader" },
     { name = "ruff", specifier = ">=0.11.5" },
 ]
 docs = [

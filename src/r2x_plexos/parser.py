@@ -1,12 +1,15 @@
 """PLEXOS parser implementation for r2x-core framework."""
 
+from importlib.metadata import version
+
 from infrasys import Component
 from loguru import logger
 
 from r2x_core import BaseParser, DataStore
 
-from . import __version__
 from .config import PLEXOSConfig
+
+__version__ = version("r2x_plexos")
 
 
 class PLEXOSParser(BaseParser):

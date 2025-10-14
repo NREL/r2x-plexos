@@ -8,6 +8,15 @@ from importlib.metadata import version
 from loguru import logger
 
 from .config import PLEXOSConfig
+from .models import (
+    PLEXOSComponent,
+    PLEXOSProperty,
+    PLEXOSPropertyValue,
+    PLEXOSRow,
+    get_scenario_priority,
+    scenario_priority,
+    set_scenario_priority,
+)
 from .parser import PLEXOSParser
 
 __version__ = version("r2x_plexos")
@@ -19,19 +28,14 @@ logger.disable("r2x_plexos")
 
 
 __all__ = [
+    "PLEXOSComponent",
     "PLEXOSConfig",
     "PLEXOSParser",
+    "PLEXOSProperty",
+    "PLEXOSPropertyValue",
+    "PLEXOSRow",
     "__version__",
+    "get_scenario_priority",
+    "scenario_priority",
+    "set_scenario_priority",
 ]
-
-
-def register_plugin() -> None:
-    """Register plugin to R2X framework."""
-    from r2x_core.plugins import PluginManager
-
-    PluginManager.register_model_plugin(
-        name="plexos",
-        config=PLEXOSConfig,
-        parser=PLEXOSParser,
-        exporter=None,  # Will be implemented later
-    )

@@ -1329,17 +1329,14 @@ wheels = [
 [[package]]
 name = "r2x-core"
 version = "0.0.8"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/NREL/r2x-core?branch=pesap%2Fupgrader#5a4dea08686addc06205074c5d26b6faba9b3298" }
 dependencies = [
     { name = "h5py" },
     { name = "infrasys" },
     { name = "loguru" },
+    { name = "packaging" },
     { name = "polars" },
     { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/cc/1508a9abfec344d4bb6311f6cdb7160566cfa19f881a2832837b5dcac0c6/r2x_core-0.0.8.tar.gz", hash = "sha256:a37e20bc4a6ecb26236c2eef79022de5142486427a77c4ba906b0bb3e9c4d232", size = 40127, upload-time = "2025-10-10T21:51:37.769Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/3b/ccc06433c0a9e1670ced817886ffbb961765e93b9f8a75578d6e2a303645/r2x_core-0.0.8-py3-none-any.whl", hash = "sha256:b7a538590f161244ba4706207ff5efef40d9d38f3043f4a4e62752232f7b5a57", size = 47352, upload-time = "2025-10-10T21:51:36.387Z" },
 ]
 
 [[package]]
@@ -1358,6 +1355,7 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-coverage" },
+    { name = "r2x-core" },
     { name = "ruff" },
 ]
 docs = [
@@ -1375,7 +1373,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "plexosdb", specifier = ">=1.1.0" },
-    { name = "r2x-core", specifier = "~=0.0.8" },
+    { name = "r2x-core", git = "https://github.com/NREL/r2x-core?branch=pesap%2Fupgrader" },
 ]
 
 [package.metadata.requires-dev]
@@ -1385,6 +1383,7 @@ dev = [
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-coverage", specifier = ">=0.0" },
+    { name = "r2x-core", git = "https://github.com/NREL/r2x-core?branch=pesap%2Fupgrader" },
     { name = "ruff", specifier = ">=0.11.5" },
 ]
 docs = [

@@ -68,11 +68,6 @@ Changelog = "https://nrel.github.io/r2x-plexos/CHANGELOG.html"
 requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/r2x_plexos"]
-
-
-
 [tool.pytest.ini_options]
 pythonpath = [
   "src"
@@ -85,10 +80,6 @@ exclude = ["tests/"]
 plugins = [
   "pydantic.mypy"
 ]
-
-[[tool.mypy.overrides]]
-module = "h5py.*"
-ignore_missing_imports = true
 
 
 [tool.ruff]
@@ -103,6 +94,7 @@ extend-exclude = [
 
 [tool.ruff.lint]
 select = [
+    "D",      # pyddoc
     "E",      # pycodestyle errors
     "W",      # pycodestyle warnings
     "F",      # pyflakes
@@ -121,10 +113,13 @@ ignore = [
     "B027",   # Empty method in abstract class without @abstractmethod (intentional for hooks)
 ]
 
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = [
-    "S101",   # Use of assert
-]
+# Ignore `D` rules everywhere except for the `src/` directory.
+"!src/**.py" = ["D", "S101"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["r2x_core"]
@@ -133,3 +128,6 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 [tool.ruff.lint.mccabe]
 # Cyclomatic complexity threshold
 max-complexity = 10
+
+[tool.uv.sources]
+r2x-core = { git = "https://github.com/NREL/r2x-core", branch = "pesap/upgrader" }

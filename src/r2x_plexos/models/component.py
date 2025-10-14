@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from infrasys import Component
 
 from r2x_plexos.models.property import PLEXOSPropertyValue
 
 
-class PLEXOSComponent(BaseModel):
+class PLEXOSComponent(Component):
     """Base class for PLEXOS components with automatic property resolution.
 
     When accessing a field that contains a PropertyValue, automatically
@@ -27,3 +27,13 @@ class PLEXOSComponent(BaseModel):
             return value.get_value()
 
         return value
+
+    # PLEXOS has a lot of defaults. Displaying them is a nightmare
+    def __repr__(self) -> str:
+        """PlexosComponent representation."""
+        fields = []
+        for name, field_info in self.model_fields.items():
+            value = getattr(self, name)
+            if value is not None and value != field_info.default:
+                fields.append(f"{name}={value!r}")
+        return f"{self.__class__.__name__}({', '.join(fields)})"

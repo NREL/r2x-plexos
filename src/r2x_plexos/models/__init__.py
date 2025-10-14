@@ -3,8 +3,12 @@
 from .base import PLEXOSRow
 from .component import PLEXOSComponent
 from .context import (
+    get_horizon,
     get_scenario_priority,
+    horizon,
+    scenario_and_horizon,
     scenario_priority,
+    set_horizon,
     set_scenario_priority,
 )
 from .property import PLEXOSPropertyValue
@@ -17,7 +21,11 @@ __all__ = [
     "PLEXOSRow",
     "PropertySpecification",
     "PropertyValue",
+    "get_horizon",
     "get_scenario_priority",
+    "horizon",
+    "scenario_and_horizon",
     "scenario_priority",
+    "set_horizon",
     "set_scenario_priority",
 ]

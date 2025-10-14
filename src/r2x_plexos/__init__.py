@@ -13,8 +13,12 @@ from .models import (
     PLEXOSProperty,
     PLEXOSPropertyValue,
     PLEXOSRow,
+    get_horizon,
     get_scenario_priority,
+    horizon,
+    scenario_and_horizon,
     scenario_priority,
+    set_horizon,
     set_scenario_priority,
 )
 from .parser import PLEXOSParser
@@ -35,7 +39,11 @@ __all__ = [
     "PLEXOSPropertyValue",
     "PLEXOSRow",
     "__version__",
+    "get_horizon",
     "get_scenario_priority",
+    "horizon",
+    "scenario_and_horizon",
     "scenario_priority",
+    "set_horizon",
     "set_scenario_priority",
 ]

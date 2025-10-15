@@ -10,4 +10,4 @@ from r2x_core.plugin_config import PluginConfig
 class PLEXOSConfig(PluginConfig):
     """PLEXOS configuration class."""
 
-    model_name: Annotated[str, Field(description="Name of the model to parse.")]
+    model_name: Annotated[str, Field(description="Name of the PLEXOS model.")]

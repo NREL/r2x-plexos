@@ -1328,8 +1328,8 @@ wheels = [
 
 [[package]]
 name = "r2x-core"
-version = "0.0.8"
-source = { git = "https://github.com/NREL/r2x-core?branch=pesap%2Fupgrader#5a4dea08686addc06205074c5d26b6faba9b3298" }
+version = "0.0.9"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
     { name = "infrasys" },
@@ -1337,6 +1337,10 @@ dependencies = [
     { name = "packaging" },
     { name = "polars" },
     { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/54/62/d6f5a9c9a7fd7390f7a798896912164fcb617b9bd2cb2bb95932c17657ab/r2x_core-0.0.9.tar.gz", hash = "sha256:53e8024eac6c3bf109e9f6f0956693f2fab8fb9738d11d217f3643cd5c1938d1", size = 56974, upload-time = "2025-10-15T18:40:30.02Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/bd/7ac922886f83d738174d7de7785a04f387b86763704fe7270fbe4b0e32d5/r2x_core-0.0.9-py3-none-any.whl", hash = "sha256:0466b4f0d858a815a4bff7fdf4dd8b7862e1aef53701f6b1ce598d0b0188012c", size = 67954, upload-time = "2025-10-15T18:40:28.6Z" },
 ]
 
 [[package]]
@@ -1372,7 +1376,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "plexosdb", specifier = ">=1.1.0" },
-    { name = "r2x-core", git = "https://github.com/NREL/r2x-core?branch=pesap%2Fupgrader" },
+    { name = "r2x-core", specifier = "~=0.0.9" },
 ]
 
 [package.metadata.requires-dev]

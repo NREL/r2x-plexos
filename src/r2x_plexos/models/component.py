@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from infrasys import Component
 
 from r2x_plexos.models.property import PLEXOSPropertyValue
 
 
-class PLEXOSComponent(Component):
+class PLEXOSObject(Component):
     """Base class for PLEXOS components with automatic property resolution.
 
     When accessing a field that contains a PropertyValue, automatically
     calls get_value() to resolve using global scenario priority context.
     """
+
+    model_config: ClassVar = {"protected_namespaces": ()}
+    category: str | None = None
+    object_id: int | None = None
 
     def __getattribute__(self, name: str) -> Any:
         """Override attribute access to auto-resolve PropertyValue fields."""
@@ -37,3 +41,11 @@ class PLEXOSComponent(Component):
             if value is not None and value != field_info.default:
                 fields.append(f"{name}={value!r}")
         return f"{self.__class__.__name__}({', '.join(fields)})"
+
+
+class PLEXOSTopology(PLEXOSObject):
+    """Abstract type to filter topological elements on PLEXOS."""
+
+
+class PLEXOSConfiguration(PLEXOSObject):
+    """Abstract type to filter topological elements on PLEXOS."""

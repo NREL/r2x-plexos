@@ -9,7 +9,7 @@ from loguru import logger
 
 from .config import PLEXOSConfig
 from .models import (
-    PLEXOSComponent,
+    PLEXOSObject,
     PLEXOSProperty,
     PLEXOSPropertyValue,
     PLEXOSRow,
@@ -32,8 +32,8 @@ logger.disable("r2x_plexos")
 
 
 __all__ = [
-    "PLEXOSComponent",
     "PLEXOSConfig",
+    "PLEXOSObject",
     "PLEXOSParser",
     "PLEXOSProperty",
     "PLEXOSPropertyValue",

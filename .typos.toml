@@ -8,3 +8,5 @@ extend-exclude = [
 [default.extend-words]
 # Pydantic core schema function name (not a typo)
 ser = "ser"
+FO = "FO"
+fom = "fom"

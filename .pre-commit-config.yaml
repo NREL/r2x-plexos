@@ -34,7 +34,12 @@ repos:
     hooks:
       - id: mypy
         types: [python]
-        args: [--config-file=pyproject.toml, ./src/r2x_plexos]
+        args:
+          [
+            --config-file=pyproject.toml,
+            ./src/r2x_plexos,
+            --follow-untyped-imports,
+          ]
         pass_filenames: false
         language: system
         entry: uv run mypy

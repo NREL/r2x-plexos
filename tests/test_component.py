@@ -4,10 +4,10 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
-from r2x_plexos import PLEXOSComponent, PLEXOSProperty, PLEXOSPropertyValue, scenario_priority
+from r2x_plexos import PLEXOSObject, PLEXOSProperty, PLEXOSPropertyValue, scenario_priority
 
 
-class Generator(PLEXOSComponent):
+class Generator(PLEXOSObject):
     max_capacity: Annotated[float | int, PLEXOSProperty(units="MW")]
     min_capacity: Annotated[float | int, PLEXOSProperty(units="MW")]
 

@@ -374,8 +374,8 @@ class PLEXOSPropertyValue:
     def _add_to_indexes(self, key: PLEXOSPropertyKey) -> None:
         """Add a key to all relevant indexes."""
 
-        # Helper to add key to index
         def add_to_index(index: dict[Any, set[PLEXOSPropertyKey]], index_key: Any) -> None:
+            """Help adding to index."""
             if index_key not in index:
                 index[index_key] = set()
             index[index_key].add(key)

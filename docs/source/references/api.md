@@ -6,12 +6,12 @@ Complete API documentation for all r2x-plexos classes and functions.
 
 ## Parser
 
-```{eval-rst}
-.. autoclass:: r2x_plexos.PLEXOSParser
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
+<!-- ```{eval-rst} -->
+<!-- .. autoclass:: r2x_plexos.PLEXOSParser -->
+<!--    :members: -->
+<!--    :undoc-members: -->
+<!--    :show-inheritance: -->
+<!-- ``` -->
 
 ## Configuration
 

@@ -17,15 +17,20 @@ from loguru import logger
 from plexosdb import ClassEnum, PlexosDB
 
 from r2x_core import BaseParser, DataStore
-from r2x_plexos.models.membership import PLEXOSMembership
-from r2x_plexos.models.property import PLEXOSPropertyValue
-from r2x_plexos.models.utils import get_field_name_by_alias
 
 from .config import PLEXOSConfig
-from .models.component import PLEXOSObject
-from .models.context import get_horizon, set_scenario_priority
-from .plexosdb_utils import get_collection_enum, get_collection_name
-from .util_mappings import PLEXOS_TYPE_MAP
+from .datafile_handler import extract_all_time_series
+from .models import (
+    PLEXOSDatafile,
+    PLEXOSMembership,
+    PLEXOSObject,
+    PLEXOSPropertyValue,
+    get_horizon,
+    set_scenario_priority,
+)
+from .models.utils import get_field_name_by_alias
+from .utils_mappings import PLEXOS_TYPE_MAP
+from .utils_plexosdb import get_collection_enum, get_collection_name
 
 __version__ = version("r2x_plexos")
 
@@ -200,11 +205,7 @@ class PLEXOSParser(BaseParser):
         logger.info("Post-processing complete")
 
     def _add_memberships(self) -> None:
-        """Add membership relationships between PLEXOS components.
-
-        Memberships define parent-child relationships between components
-        through collections (e.g., generators belonging to nodes).
-        """
+        """Add membership relationships between PLEXOS components."""
         assert self.db is not None
 
         system_class_id = self.db.get_class_id(ClassEnum.System)
@@ -231,7 +232,6 @@ class PLEXOSParser(BaseParser):
                 logger.trace("Skip collection {} - missing parent or child", collection_name)
                 continue
 
-            # Create and add membership
             self.system.add_supplemental_attribute(
                 child_object,
                 PLEXOSMembership(
@@ -242,20 +242,7 @@ class PLEXOSParser(BaseParser):
             )
 
     def _create_component(self, obj_type: str, db_rows: list[dict[str, Any]]) -> PLEXOSObject | None:
-        """Create a PLEXOS component from database rows.
-
-        Parameters
-        ----------
-        obj_type : str
-            The type of object to create
-        db_rows : list[dict[str, Any]]
-            Database rows for this object
-
-        Returns
-        -------
-        PLEXOSObject | None
-            The created component or None if not supported
-        """
+        """Create a PLEXOS component from database rows."""
         if not db_rows:
             return None
 
@@ -296,20 +283,11 @@ class PLEXOSParser(BaseParser):
         return component
 
     def _process_component_properties(self, component: PLEXOSObject, db_rows: list[dict[str, Any]]) -> None:
-        """Process and attach properties to a component.
-
-        Parameters
-        ----------
-        component : PLEXOSObject
-            The component to attach properties to
-        db_rows : list[dict[str, Any]]
-            Database rows containing property data
-        """
+        """Process and attach properties to a component."""
         for prop_name, rows in itertools.groupby(db_rows, key=itemgetter("property")):
             if prop_name is None:
                 continue
 
-            # Find the corresponding field name for this property alias
             field_name = get_field_name_by_alias(component, prop_name)
             if field_name is None:
                 logger.warning(
@@ -319,14 +297,9 @@ class PLEXOSParser(BaseParser):
                 )
                 continue
 
-            # Create property from records and attach to component
             prop_records = list(rows)
             property_value = PLEXOSPropertyValue.from_records(prop_records)
             setattr(component, field_name, property_value)
-
-            # Register time series references if needed
-            # Skip PLEXOSDatafile components - their properties are metadata, not time series
-            from r2x_plexos.models.datafile import PLEXOSDatafile
 
             if not isinstance(component, PLEXOSDatafile) and (
                 property_value.has_datafile() or property_value.has_variable()
@@ -382,59 +355,13 @@ class PLEXOSParser(BaseParser):
                 )
             )
 
-    def _apply_action(self, base_value: float, new_value: float, action: str | None) -> float:
-        """Apply an action operation to combine values.
-
-        Parameters
-        ----------
-        base_value : float
-            The current/base value
-        new_value : float
-            The new value to apply
-        action : str | None
-            The action to perform: "=", "*", "+", "-", "/"
-
-        Returns
-        -------
-        float
-            The result of applying the action
-        """
-        if action == "*":
-            return base_value * new_value
-        elif action == "+":
-            return base_value + new_value
-        elif action == "-":
-            return base_value - new_value
-        elif action == "/" and new_value != 0:
-            return base_value / new_value
-        else:  # "=" or unknown - just return new value
-            return new_value
-
     def _resolve_datafile_path(self, datafile_path: str | None) -> Path:
-        """Resolve datafile path relative to data store and timeseries dir.
-
-        Parameters
-        ----------
-        datafile_path : str | None
-            The relative path to the datafile from PLEXOS
-
-        Returns
-        -------
-        Path
-            The absolute path to the datafile
-
-        Raises
-        ------
-        ValueError
-            If no datafile path is provided
-        """
+        """Resolve datafile path relative to data store and timeseries dir."""
         if not datafile_path:
             raise ValueError("No datafile path provided")
 
-        # Normalize Windows paths to Unix-style
         normalized_path = datafile_path.replace("\\", "/")
 
-        # Build full path starting from data store folder
         base_path = Path(self.data_store.folder)
         if self.config.timeseries_dir:
             base_path = base_path / self.config.timeseries_dir
@@ -451,30 +378,7 @@ class PLEXOSParser(BaseParser):
         reference_year: int,
         timeslices: list[Any] | None = None,
     ) -> SingleTimeSeries:
-        """Get time series from cache or parse from file.
-
-        Parameters
-        ----------
-        file_path : str
-            Absolute path to the time series file
-        component_name : str
-            Name of the component to extract time series for
-        reference_year : int
-            Reference year for time series parsing
-        timeslices : list[Any] | None
-            List of timeslice components for parsing timeslice files
-
-        Returns
-        -------
-        SingleTimeSeries
-            The parsed time series for the component
-
-        Raises
-        ------
-        ValueError
-            If component not found in parsed file
-        """
-        # Check file cache
+        """Get time series from cache or parse from file."""
         if file_path in self._parsed_files_cache:
             logger.trace(f"Using cached file parse: {file_path}")
             component_map = self._parsed_files_cache[file_path]
@@ -483,9 +387,7 @@ class PLEXOSParser(BaseParser):
             else:
                 raise ValueError(f"Component {component_name} not found in cached file {file_path}")
 
-        # Parse file
         logger.debug(f"Parsing time series file: {file_path}")
-        from r2x_plexos.datafile_handler import extract_all_time_series
 
         initial_time = datetime(reference_year, 1, 1)
         ts_map = extract_all_time_series(
@@ -495,11 +397,9 @@ class PLEXOSParser(BaseParser):
             timeslices=timeslices,
         )
 
-        # Cache the parsed file
         self._parsed_files_cache[file_path] = ts_map
         logger.trace(f"Cached file with {len(ts_map)} time series: {file_path}")
 
-        # Return the specific component's time series
         if component_name not in ts_map:
             raise ValueError(f"Component {component_name} not found in parsed file {file_path}")
 

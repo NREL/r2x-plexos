@@ -1,7 +1,7 @@
 import pytest
 from plexosdb import ClassEnum, CollectionEnum, PlexosDB
 
-from r2x_plexos.plexosdb_utils import get_collection_enum, get_collection_name
+from r2x_plexos.utils_plexosdb import get_collection_enum, get_collection_name
 
 
 @pytest.fixture

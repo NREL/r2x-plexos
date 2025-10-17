@@ -170,7 +170,6 @@ def detect_file_type(df: pl.LazyFrame, timeslices: list["PLEXOSTimeslice"] | Non
     if all(col.lower().strip() in column_lower_map for col in ["year"]):
         return YearlyFile()
 
-    # Detect files with columns like ['Name', 'YR-2022', 'YR-2023', ...] as YearlyFile
     if "name" in {col.lower().strip() for col in columns} and any(
         col.lower().strip().startswith("yr-") for col in columns
     ):
@@ -233,7 +232,6 @@ def _(
 
     columns = df.collect_schema().names()
 
-    # Identify band columns (numeric column names)
     band_columns = []
     for col in columns:
         try:
@@ -246,16 +244,13 @@ def _(
     total_hours = hours_in_year(year)
     ts_map: dict[str, SingleTimeSeries] = {}
 
-    # Group by component name
     collected_df = df.collect()
 
-    # First, get all unique component names
     name_column = find_column_case_insensitive(collected_df[0].to_dict(), "name")
     if name_column is None:
         raise ValueError("No 'Name' column found in pattern file")
     unique_components = collected_df.select(name_column).unique().to_series().to_list()
 
-    # For each component, process all its rows
     for component_name in unique_components:
         component_rows = collected_df.filter(pl.col(name_column) == component_name)
 
@@ -297,7 +292,6 @@ def _(
                 ts_name = f"{component_name}_band_{band}"
                 ts_map[ts_name] = create_time_series(hourly_values, f"band_{band}", datetime(year, 1, 1))
         else:
-            # Handle standard case (no band columns) - Name, Pattern, Value format
             hourly_values = [0.0] * total_hours  # Default to 0
 
             for row in component_rows.iter_rows(named=True):
@@ -315,7 +309,6 @@ def _(
                     day_of_year = (pattern_date - datetime(year, 1, 1)).days
                     start_hour = day_of_year * 24
 
-                    # Apply the value for all 24 hours of the day
                     for hour in range(24):
                         if start_hour + hour < total_hours:
                             hourly_values[start_hour + hour] = safe_float_conversion(raw_value)
@@ -435,29 +428,23 @@ def _(
 
     collected_df = df.collect()
 
-    # Find the datetime column name case-insensitively
     datetime_col = next((col for col in collected_df.columns if col.lower() == "datetime"), None)
     if datetime_col is None:
         raise ValueError("Datetime column not found in file")
 
-    # Pre-process the dataframe to filter by year
     filtered_rows = []
     for row in collected_df.iter_rows(named=True):
         date_obj = parse_datetime_string(row[datetime_col])
         if date_obj is not None and date_obj.year == year:
-            # Add the parsed datetime object to the row for later use
             row_with_parsed_date = dict(row)
             row_with_parsed_date["_parsed_datetime"] = date_obj
             filtered_rows.append(row_with_parsed_date)
 
-    # Get component columns (exclude datetime column)
     component_columns = [col for col in collected_df.columns if col.lower() != "datetime"]
     ts_map: dict[str, SingleTimeSeries] = {}
     year_start = datetime(year=year, month=1, day=1)
     month_ranges = get_month_hour_ranges(year)
 
-    # Determine if this is monthly or hourly data
-    # Check if there's only one entry per month by counting distinct months
     month_counts = {}
     for row in filtered_rows:
         date_obj = row["_parsed_datetime"]
@@ -466,17 +453,14 @@ def _(
             month_counts[month] = 0
         month_counts[month] += 1
 
-    # If most months have only one entry, treat as monthly data
     is_monthly_data = sum(1 for count in month_counts.values() if count == 1) >= len(month_counts) / 2
 
     for component in component_columns:
         hourly_values = [0.0] * total_hours
 
         if is_monthly_data:
-            # Handle monthly data - fill in all hours for each month
             monthly_values = {}
 
-            # First, collect the value for each month
             for row in filtered_rows:
                 if component not in row or row[component] is None:
                     continue
@@ -485,17 +469,14 @@ def _(
                 month = date_obj.month
                 component_value = safe_float_conversion(row[component])
 
-                # Only keep the first value for each month
                 if month not in monthly_values:
                     monthly_values[month] = component_value
 
-            # Then apply the monthly value to all hours in that month
             for month, value in monthly_values.items():
                 for hour_idx in month_ranges[month]:
                     if hour_idx < total_hours:
                         hourly_values[hour_idx] = value
         else:
-            # Handle hourly data - process each row individually
             for row in filtered_rows:
                 if component not in row or row[component] is None:
                     continue
@@ -670,22 +651,38 @@ def _(
 
     collected_df = df.collect()
 
-    # Pivot wide year columns (e.g., YR-2025, YR-2026, ...) to long format with columns: Name, year, value
+    year_column = next((col for col in collected_df.columns if col.lower() == "year"), None)
+    has_name_column = "Name" in collected_df.columns or "name" in collected_df.columns
+
+    ts_map: dict[str, SingleTimeSeries] = {}
+    if year_column and not has_name_column:
+        year_row_df = collected_df.filter(pl.col(year_column) == year)
+
+        if year_row_df.height == 0:
+            return {}  # No data for this year
+
+        year_row = year_row_df.row(0, named=True)
+
+        for col_name, value in year_row.items():
+            if col_name.lower() == "year":
+                continue  # Skip the year column itself
+
+            if value is not None:
+                yearly_value = safe_float_conversion(value)
+                hourly_values = [yearly_value] * total_hours
+                ts_map[col_name] = create_time_series(hourly_values, "value", initial_time)
+
+        return ts_map
+
     wide_year_cols = [col for col in collected_df.columns if col.lower().startswith("yr-")]
     if wide_year_cols:
-        # Melt the dataframe to long format
         collected_df = collected_df.melt(
             id_vars=["Name"], value_vars=wide_year_cols, variable_name="year", value_name="Value"
         )
-        # Extract the year as an integer from the column name (e.g., "YR-2025" -> 2025)
         collected_df = collected_df.with_columns(pl.col("year").str.replace(r"^YR-", "").cast(pl.Int32))
 
-    # Find year column regardless of case
-    year_column = next((col for col in collected_df.columns if col.lower() == "year"), None)
     if year_column:
         collected_df = collected_df.filter(pl.col(year_column) == year)
-
-    ts_map: dict[str, SingleTimeSeries] = {}
 
     for row in collected_df.iter_rows(named=True):
         if "Name" not in row:
@@ -720,7 +717,6 @@ def parse_datetime_string(date_str: str) -> datetime | None:
     if not isinstance(date_str, str):
         return date_str
 
-    # Try common date formats, including ISO 8601 with 'T' separator
     date_formats = [
         "%m/%d/%Y",  # 1/1/2023
         "%Y-%m-%d",  # 2023-01-01
@@ -754,11 +750,10 @@ def safe_float_conversion(value: Any) -> float:
     ------
         ValueError: If the value cannot be converted to float
     """
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return float(value)
 
     if isinstance(value, str):
-        # Remove commas and other potential thousands separators
         clean_value = value.replace(",", "")
         return float(clean_value)
 

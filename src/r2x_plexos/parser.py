@@ -2,14 +2,17 @@
 
 import itertools
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from importlib.metadata import version
 from importlib.resources import files
 from operator import itemgetter
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from infrasys import Component
+from infrasys.time_series_models import SingleTimeSeries
 from loguru import logger
 from plexosdb import ClassEnum, CollectionEnum, PlexosDB
 
@@ -20,7 +23,7 @@ from r2x_plexos.models.utils import get_field_name_by_alias
 
 from .config import PLEXOSConfig
 from .models.component import PLEXOSObject
-from .models.context import set_scenario_priority
+from .models.context import get_horizon, set_scenario_priority
 from .util_mappings import PLEXOS_TYPE_MAP
 
 __version__ = version("r2x_plexos")
@@ -80,6 +83,9 @@ class PLEXOSParser(BaseParser):
         self._valid_scenarios: list[str] = []
         self._datafile_cache: dict[str, dict[str, Any]] = {}
         self._property_cache: dict[str, float] = {}
+        self._parsed_files_cache: dict[str, dict[str, SingleTimeSeries]] = {}
+        self._attached_timeseries: dict[tuple[UUID, str], bool] = {}
+        self._failed_references: list[tuple[TimeSeriesReference, str]] = []
 
         if not db:
             # NOTE: We should change either plexosdb db to take xmltree or an
@@ -133,7 +139,52 @@ class PLEXOSParser(BaseParser):
     def build_time_series(self) -> None:
         """Attach time series data to components."""
         logger.info("Building time series data...")
-        logger.info("Time series attachment complete")
+
+        reference_year = self.config.reference_year or 2024
+        horizon = get_horizon()
+
+        try:
+            from r2x_plexos.models.timeslice import PLEXOSTimeslice
+
+            timeslices = list(self.system.get_components(PLEXOSTimeslice))
+        except Exception:
+            timeslices = []
+
+        direct_refs = [
+            ref
+            for ref in self.time_series_references
+            if ref.source_type == TimeSeriesSourceType.DIRECT_DATAFILE
+        ]
+        datafile_component_refs = [
+            ref
+            for ref in self.time_series_references
+            if ref.source_type == TimeSeriesSourceType.DATAFILE_COMPONENT
+        ]
+
+        logger.info(f"Processing {len(direct_refs)} direct datafile references")
+        logger.info(f"Processing {len(datafile_component_refs)} datafile component references")
+
+        for ref in direct_refs:
+            try:
+                self._attach_direct_datafile_timeseries(ref, reference_year, timeslices, horizon)
+            except Exception as e:
+                logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name}: {e}")
+                self._failed_references.append((ref, str(e)))
+
+        for ref in datafile_component_refs:
+            try:
+                self._attach_datafile_component_timeseries(ref, reference_year, timeslices, horizon)
+            except Exception as e:
+                logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name}: {e}")
+                self._failed_references.append((ref, str(e)))
+
+        total_refs = len(direct_refs) + len(datafile_component_refs)
+        success_count = total_refs - len(self._failed_references)
+        logger.info(f"Time series complete: {success_count}/{total_refs} successful")
+
+        if self._failed_references:
+            failed_names = [ref.component_name for ref, _ in self._failed_references[:5]]
+            logger.warning(f"Failed references (first 5): {failed_names}")
 
     def post_process_system(self) -> None:
         """Perform post-processing on the built system."""
@@ -323,14 +374,19 @@ class PLEXOSParser(BaseParser):
             setattr(component, field_name, property_value)
 
             # Register time series references if needed
-            if property_value.has_datafile() or property_value.has_variable():
+            # Skip PLEXOSDatafile components - their properties are metadata, not time series
+            from r2x_plexos.models.datafile import PLEXOSDatafile
+
+            if not isinstance(component, PLEXOSDatafile) and (
+                property_value.has_datafile() or property_value.has_variable()
+            ):
                 self._register_time_series_reference(component, field_name, property_value)
         return
 
     def _register_time_series_reference(
         self, component: PLEXOSObject, field_name: str, property: PLEXOSPropertyValue
     ) -> None:
-        """Add reference to time series for properties with time series reference."""
+        """Register time series reference for later attachment."""
         if property.has_datafile():
             for row in property.entries.values():
                 name = row.datafile_name or (
@@ -338,6 +394,7 @@ class PLEXOSParser(BaseParser):
                 )
                 if not name:
                     continue
+
                 if name.lower().endswith(".csv"):
                     self.time_series_references.append(
                         TimeSeriesReference(
@@ -349,7 +406,19 @@ class PLEXOSParser(BaseParser):
                             units=property.units,
                         )
                     )
-                    break
+                else:
+                    self.time_series_references.append(
+                        TimeSeriesReference(
+                            component_uuid=component.uuid,
+                            component_name=component.name,
+                            field_name=field_name,
+                            source_type=TimeSeriesSourceType.DATAFILE_COMPONENT,
+                            datafile_component_name=name,
+                            units=property.units,
+                        )
+                    )
+                break
+
         elif property.has_variable():
             self.time_series_references.append(
                 TimeSeriesReference(
@@ -389,3 +458,226 @@ class PLEXOSParser(BaseParser):
             return base_value / new_value
         else:  # "=" or unknown - just return new value
             return new_value
+
+    def _resolve_datafile_path(self, datafile_path: str | None) -> Path:
+        """Resolve datafile path relative to data store and timeseries dir.
+
+        Parameters
+        ----------
+        datafile_path : str | None
+            The relative path to the datafile from PLEXOS
+
+        Returns
+        -------
+        Path
+            The absolute path to the datafile
+
+        Raises
+        ------
+        ValueError
+            If no datafile path is provided
+        """
+        if not datafile_path:
+            raise ValueError("No datafile path provided")
+
+        # Normalize Windows paths to Unix-style
+        normalized_path = datafile_path.replace("\\", "/")
+
+        # Build full path starting from data store folder
+        base_path = Path(self.data_store.folder)
+        if self.config.timeseries_dir:
+            base_path = base_path / self.config.timeseries_dir
+
+        full_path = base_path / normalized_path
+
+        logger.trace(f"Resolved datafile path: {datafile_path} -> {full_path}")
+        return full_path
+
+    def _get_or_parse_timeseries(
+        self,
+        file_path: str,
+        component_name: str,
+        reference_year: int,
+        timeslices: list[Any] | None = None,
+    ) -> SingleTimeSeries:
+        """Get time series from cache or parse from file.
+
+        Parameters
+        ----------
+        file_path : str
+            Absolute path to the time series file
+        component_name : str
+            Name of the component to extract time series for
+        reference_year : int
+            Reference year for time series parsing
+        timeslices : list[Any] | None
+            List of timeslice components for parsing timeslice files
+
+        Returns
+        -------
+        SingleTimeSeries
+            The parsed time series for the component
+
+        Raises
+        ------
+        ValueError
+            If component not found in parsed file
+        """
+        # Check file cache
+        if file_path in self._parsed_files_cache:
+            logger.trace(f"Using cached file parse: {file_path}")
+            component_map = self._parsed_files_cache[file_path]
+            if component_name in component_map:
+                return component_map[component_name]
+            else:
+                raise ValueError(f"Component {component_name} not found in cached file {file_path}")
+
+        # Parse file
+        logger.debug(f"Parsing time series file: {file_path}")
+        from r2x_plexos.datafile_handler import extract_all_time_series
+
+        initial_time = datetime(reference_year, 1, 1)
+        ts_map = extract_all_time_series(
+            path=file_path,
+            default_initial_time=initial_time,
+            year=reference_year,
+            timeslices=timeslices,
+        )
+
+        # Cache the parsed file
+        self._parsed_files_cache[file_path] = ts_map
+        logger.trace(f"Cached file with {len(ts_map)} time series: {file_path}")
+
+        # Return the specific component's time series
+        if component_name not in ts_map:
+            raise ValueError(f"Component {component_name} not found in parsed file {file_path}")
+
+        return ts_map[component_name]
+
+    def _attach_direct_datafile_timeseries(
+        self,
+        ref: TimeSeriesReference,
+        reference_year: int,
+        timeslices: list[Any] | None,
+        horizon: tuple[str, str] | None,
+    ) -> None:
+        """Attach time series from direct CSV file path."""
+        cache_key = (ref.component_uuid, ref.field_name)
+        if cache_key in self._attached_timeseries:
+            return
+
+        component = self.system.get_component_by_uuid(ref.component_uuid)
+        if not component:
+            raise ValueError(f"Component {ref.component_name} not found")
+
+        file_path = self._resolve_datafile_path(ref.datafile_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        ts = self._get_or_parse_timeseries(
+            file_path=str(file_path),
+            component_name=ref.component_name,
+            reference_year=reference_year,
+            timeslices=timeslices,
+        )
+
+        self._attach_or_update_property(component, ref, ts, horizon)
+        self._attached_timeseries[cache_key] = True
+
+    def _attach_or_update_property(
+        self,
+        component: PLEXOSObject,
+        ref: TimeSeriesReference,
+        ts: SingleTimeSeries,
+        horizon: tuple[str, str] | None,
+    ) -> None:
+        """Attach time series or update property value if constant."""
+        unique_values = set(ts.data)
+        is_constant = len(unique_values) == 1
+
+        if is_constant:
+            single_value = float(next(iter(unique_values)))
+            logger.info(f"Updating constant value for {ref.component_name}.{ref.field_name}: {single_value}")
+
+            if hasattr(component, ref.field_name):
+                from r2x_plexos.models.base import PLEXOSRow
+
+                prop_value = component.get_property_value(ref.field_name)
+                if isinstance(prop_value, PLEXOSPropertyValue):
+                    for key, entry in list(prop_value.entries.items()):
+                        prop_value.entries[key] = PLEXOSRow(
+                            value=single_value,
+                            units=entry.units,
+                            action=entry.action,
+                            scenario_name=entry.scenario_name,
+                            band=entry.band,
+                            timeslice_name=entry.timeslice_name,
+                            date_from=entry.date_from,
+                            date_to=entry.date_to,
+                            datafile_name=entry.datafile_name,
+                            datafile_id=entry.datafile_id,
+                            column_name=entry.column_name,
+                            variable_name=entry.variable_name,
+                            variable_id=entry.variable_id,
+                            text=entry.text,
+                        )
+        else:
+            field_ts = SingleTimeSeries.from_array(
+                data=ts.data,
+                name=ref.field_name,
+                initial_timestamp=ts.initial_timestamp,
+                resolution=ts.resolution,
+            )
+            features = {"horizon": horizon} if horizon else {}
+            logger.trace(f"Attaching time series to {ref.component_name}.{ref.field_name}")
+            self.system.add_time_series(field_ts, component, **features)
+
+    def _attach_datafile_component_timeseries(
+        self,
+        ref: TimeSeriesReference,
+        reference_year: int,
+        timeslices: list[Any] | None,
+        horizon: tuple[str, str] | None,
+    ) -> None:
+        """Attach time series from datafile component reference (e.g., "FOM" -> "FOM.csv")."""
+        cache_key = (ref.component_uuid, ref.field_name)
+        if cache_key in self._attached_timeseries:
+            return
+
+        component = self.system.get_component_by_uuid(ref.component_uuid)
+        if not component:
+            raise ValueError(f"Component {ref.component_name} not found")
+
+        from r2x_plexos.models.datafile import PLEXOSDatafile
+
+        datafile_component = self.system.get_component(PLEXOSDatafile, ref.datafile_component_name)
+        if not datafile_component:
+            raise ValueError(f"Datafile '{ref.datafile_component_name}' not found")
+
+        filename_prop = datafile_component.get_property_value("filename")
+        if not filename_prop:
+            raise ValueError(f"Datafile '{ref.datafile_component_name}' has no filename property")
+
+        file_path_str = None
+        if hasattr(filename_prop, "entries"):
+            for entry in filename_prop.entries.values():
+                if entry.text and entry.text.lower().endswith(".csv"):
+                    file_path_str = entry.text
+                    break
+
+        if not file_path_str:
+            raise ValueError(f"No CSV path in datafile '{ref.datafile_component_name}'")
+
+        file_path = self._resolve_datafile_path(file_path_str)
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        ts = self._get_or_parse_timeseries(
+            file_path=str(file_path),
+            component_name=ref.component_name,
+            reference_year=reference_year,
+            timeslices=timeslices,
+        )
+
+        self._attach_or_update_property(component, ref, ts, horizon)
+        self._attached_timeseries[cache_key] = True

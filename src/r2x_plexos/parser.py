@@ -330,6 +330,7 @@ class PLEXOSParser(BaseParser):
     def _register_time_series_reference(
         self, component: PLEXOSObject, field_name: str, property: PLEXOSPropertyValue
     ) -> None:
+        """Add reference to time series for properties with time series reference."""
         if property.has_datafile():
             for row in property.entries.values():
                 name = row.datafile_name or (

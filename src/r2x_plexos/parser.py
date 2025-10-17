@@ -401,6 +401,8 @@ class PLEXOSParser(BaseParser):
         logger.trace(f"Cached file with {len(ts_map)} time series: {file_path}")
 
         if component_name not in ts_map:
+            if len(ts_map) == 1:
+                return next(iter(ts_map.values()))
             raise ValueError(f"Component {component_name} not found in parsed file {file_path}")
 
         return ts_map[component_name]
@@ -509,15 +511,15 @@ class PLEXOSParser(BaseParser):
         if not filename_prop:
             raise ValueError(f"Datafile '{ref.datafile_component_name}' has no filename property")
 
-        file_path_str = None
-        if hasattr(filename_prop, "entries"):
-            for entry in filename_prop.entries.values():
-                if entry.text and entry.text.lower().endswith(".csv"):
-                    file_path_str = entry.text
-                    break
+        file_path_str = filename_prop.get_text_with_priority()
 
-        if not file_path_str:
-            raise ValueError(f"No CSV path in datafile '{ref.datafile_component_name}'")
+        if not file_path_str or not isinstance(file_path_str, str):
+            raise ValueError(f"No valid filename in datafile '{ref.datafile_component_name}'")
+
+        if not file_path_str.lower().endswith(".csv"):
+            raise ValueError(
+                f"Datafile '{ref.datafile_component_name}' filename is not a CSV: {file_path_str}"
+            )
 
         file_path = self._resolve_datafile_path(file_path_str)
         if not file_path.exists():

@@ -280,16 +280,19 @@ def test_extract_all_time_series(mock_load_csv: MagicMock) -> None:
 
 @patch("r2x_plexos.datafile_handler.extract_all_time_series")
 def test_extract_one_time_series(mock_extract_all: MagicMock) -> None:
-    # Setup mock return value
-    mock_ts = MagicMock()  # Mock timeseries
+    mock_ts = MagicMock()
     mock_extract_all.return_value = {"Generator1": mock_ts}
 
     # Test successful extraction
     result = extract_one_time_series("dummy/path", "Generator1", datetime(2023, 1, 1), 2023)
     assert result == mock_ts
 
-    # Test extraction of non-existent component
-    mock_extract_all.return_value = {"Generator1": mock_ts}
+    # Test single-entry fallback for component name mismatch
+    result = extract_one_time_series("dummy/path", "NonExistentGenerator", datetime(2023, 1, 1), 2023)
+    assert result == mock_ts
+
+    # Test extraction fails with multiple components
+    mock_extract_all.return_value = {"Generator1": mock_ts, "Generator2": MagicMock()}
     with pytest.raises(ValueError):
         extract_one_time_series("dummy/path", "NonExistentGenerator", datetime(2023, 1, 1), 2023)
 

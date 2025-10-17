@@ -138,6 +138,9 @@ class PropertySpecification:
     ) -> core_schema.CoreSchema:
         """Register validator with Pydantic v2.
 
+        This schema allows Field constraints (like le=100) to be applied only to
+        numeric values, not to PLEXOSPropertyValue objects.
+
         Parameters
         ----------
         source_type : Any
@@ -152,13 +155,16 @@ class PropertySpecification:
         """
         from r2x_plexos.models.property import PLEXOSPropertyValue
 
+        # Get the base schema from the source type (includes Field constraints)
+        python_schema = handler(source_type)
+
+        # Create our custom union schema that accepts multiple types
         return core_schema.with_info_after_validator_function(
             self._validate_value,
             core_schema.union_schema(
                 [
                     core_schema.none_schema(),  # Allow None values
-                    core_schema.float_schema(),
-                    core_schema.int_schema(),
+                    python_schema,  # Use source schema for numeric values (includes Field constraints)
                     core_schema.dict_schema(),
                     core_schema.is_instance_schema(PLEXOSPropertyValue),
                 ]

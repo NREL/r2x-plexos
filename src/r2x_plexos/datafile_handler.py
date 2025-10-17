@@ -44,6 +44,10 @@ class TimesliceFile(FileType):
         self.timeslices = timeslices
 
 
+class HourlyDailyFile(FileType):
+    """File with Year, Month, Day columns and hourly columns (1-24)."""
+
+
 class ValueFile(FileType):
     """Simple file with Name and Value columns."""
 
@@ -167,6 +171,11 @@ def detect_file_type(df: pl.LazyFrame, timeslices: list["PLEXOSTimeslice"] | Non
             if col_lower in timeslice_names_lower:
                 return TimesliceFile(timeslices)
 
+    if all(col.lower().strip() in column_lower_map for col in ["year", "month", "day"]):
+        hour_cols = sum(1 for col in columns if col.strip().isdigit() and 1 <= int(col.strip()) <= 24)
+        if hour_cols >= 20 and "name" not in {col.lower().strip() for col in columns}:
+            return HourlyDailyFile()
+
     if all(col.lower().strip() in column_lower_map for col in ["year"]):
         return YearlyFile()
 
@@ -203,6 +212,8 @@ def extract_one_time_series(
     ts_map = extract_all_time_series(path, default_initial_time, year)
 
     if component not in ts_map:
+        if len(ts_map) == 1:
+            return next(iter(ts_map.values()))
         raise ValueError(f"Component '{component}' not found in file: {path}")
 
     return ts_map[component]
@@ -696,6 +707,55 @@ def _(
         ts_map[name] = create_time_series(hourly_values, "value", initial_time)
 
     return ts_map
+
+
+@parse_file.register
+def _(
+    file_type: HourlyDailyFile,
+    df: pl.LazyFrame,
+    default_initial_time: datetime | None = None,
+    year: int | None = None,
+) -> dict[str, SingleTimeSeries]:
+    """Parse Year,Month,Day,1-24 hourly format files."""
+    if year is None:
+        raise ValueError("Year must be provided for HourlyDailyFile.")
+
+    initial_time = default_initial_time or datetime(year, 1, 1)
+    collected_df = df.collect()
+
+    if collected_df.height == 0:
+        return {}
+
+    first_row = collected_df[0].to_dict()
+    year_col = find_column_case_insensitive(first_row, "year")
+    month_col = find_column_case_insensitive(first_row, "month")
+    day_col = find_column_case_insensitive(first_row, "day")
+
+    if not all([year_col, month_col, day_col]):
+        raise ValueError("Year, Month, and Day columns are required for HourlyDailyFile")
+
+    assert year_col is not None
+    assert month_col is not None
+    assert day_col is not None
+
+    year_df = collected_df.filter(pl.col(year_col) == year).sort([month_col, day_col])
+
+    if year_df.height == 0:
+        return {}
+
+    hourly_values = []
+    for row in year_df.iter_rows(named=True):
+        day_values = [
+            safe_float_conversion(row[str(hour)])
+            for hour in range(1, 25)
+            if str(hour) in row and row[str(hour)] is not None
+        ]
+        if len(day_values) != 24:
+            raise ValueError(f"Missing hourly data for {row[year_col]}-{row[month_col]}-{row[day_col]}")
+        hourly_values.extend(day_values)
+
+    ts = create_time_series(hourly_values, "hourly_data", initial_time)
+    return {"hourly_data": ts}
 
 
 def find_column_case_insensitive(row: dict[str, Any], target_name: str) -> str | None:

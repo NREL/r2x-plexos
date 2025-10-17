@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import Field
 
 from .component import PLEXOSConfiguration
+from .property_specification import PLEXOSProperty
 
 
 class PLEXOSTimeslice(PLEXOSConfiguration):
@@ -12,6 +13,7 @@ class PLEXOSTimeslice(PLEXOSConfiguration):
 
     include: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Include",
             description="If the timeslice includes the period. (-1 for True, 0 for False)",

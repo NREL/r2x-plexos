@@ -5,13 +5,16 @@ from typing import Annotated
 from pydantic import Field
 
 from .component import PLEXOSObject
+from .property import PLEXOSPropertyValue
+from .property_specification import PLEXOSProperty
 
 
 class PLEXOSDatafile(PLEXOSObject):
     """Class that holds attributes about PLEXOS datafiles."""
 
     filename: Annotated[
-        str | None,
+        PLEXOSPropertyValue | None,
+        PLEXOSProperty,
         Field(alias="Filename", description="Data file used in the simulation"),
     ] = None
 

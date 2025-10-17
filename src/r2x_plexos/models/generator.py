@@ -21,6 +21,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     expansion_optimality: Annotated[
         int,
+        PLEXOSProperty,
         Field(
             alias="Expansion Optimality",
             description="Expansion planning integerization scheme.",
@@ -37,6 +38,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     firm_capacity_unit_count: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Firm Capacity Unit Count",
             description="The total number of units installed in band corresponding to the same band of [Firm Capacity]",
@@ -484,6 +486,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     lccr_apply_discounting: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="LCCR Apply Discounting",
             description="If the discount rate should be applied to the LCCR",
@@ -510,6 +513,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     load_following_factor: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Load Following Factor",
             description="Regression factor for proportional load following",
@@ -1143,6 +1147,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 100
     max_units_built: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Max Units Built",
             description="Maximum number of units automatically constructed in aggregate over the planning horizon",
@@ -1151,6 +1156,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     max_units_built_in_year: Annotated[
         int | float,
+        PLEXOSProperty,
         Field(
             alias="Max Units Built in Year",
             description="Maximum number of units automatically constructed in any single year of the planning horizon",
@@ -1167,6 +1173,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 1e30
     max_units_retired: Annotated[
         int | float,
+        PLEXOSProperty,
         Field(
             alias="Max Units Retired",
             description="Maximum number of units automatically retired in aggregate over the planning horizon",
@@ -1580,6 +1587,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     min_units_built: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Min Units Built",
             description="Minimum number of units automatically constructed in aggregate over the planning horizon",
@@ -1588,6 +1596,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     min_units_built_in_year: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Min Units Built in Year",
             description="Minimum number of units automatically constructed in any single year of the planning horizon",
@@ -1596,6 +1605,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     min_units_retired: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Min Units Retired",
             description="Minimum number of units automatically retired in aggregate over the planning horizon",
@@ -1604,6 +1614,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     min_units_retired_in_year: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Min Units Retired in Year",
             description="Minimum number of units automatically retired in any single year of the planning horizon",
@@ -1670,6 +1681,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     must_run_units: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Must-Run Units",
             description="Number of must-run units",
@@ -1815,6 +1827,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     price_following: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Price Following",
             description="Proportion of energy optimized, where the remainder is proportional load following",
@@ -1838,6 +1851,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     project_start_date: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Project Start Date",
             description="Start date of generation project, for expansion planning.",
@@ -2429,6 +2443,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     units: Annotated[
         float | int,
+        PLEXOSProperty(units=""),
         Field(
             alias="Units",
             description="Number of installed units",
@@ -2437,6 +2452,7 @@ class PLEXOSGenerator(PLEXOSObject):
     ] = 0
     units_out: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Units Out",
             description="Number of units out of service",

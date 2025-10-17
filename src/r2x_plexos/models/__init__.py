@@ -29,6 +29,7 @@ from .scenario import PLEXOSScenario
 from .storage import PLEXOSStorage
 from .timeslice import PLEXOSTimeslice
 from .transformers import PLEXOSTransformer
+from .utils import get_field_name_by_alias
 from .variable import PLEXOSVariable
 from .zone import PLEXOSZone
 
@@ -58,6 +59,7 @@ __all__ = [
     "PLEXOSZone",
     "PropertySpecification",
     "PropertyValue",
+    "get_field_name_by_alias",
     "get_horizon",
     "get_scenario_priority",
     "horizon",

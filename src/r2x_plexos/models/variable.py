@@ -5,14 +5,20 @@ from typing import Annotated
 from pydantic import Field
 
 from .component import PLEXOSObject
+from .property_specification import PLEXOSProperty
 
 
 class PLEXOSVariable(PLEXOSObject):
     """Class that holds attributes about PLEXOS variables."""
 
-    profile: Annotated[float | int | None, Field(description="Sample profile of variable values")] = None
+    profile: Annotated[
+        float | int | None,
+        PLEXOSProperty,
+        Field(description="Sample profile of variable values"),
+    ] = None
     sampling_method: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Sampling Method",
             description="Sampling method applied to the variable",

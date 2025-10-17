@@ -245,6 +245,7 @@ class PLEXOSNode(PLEXOSTopology):
     ] = 1
     units: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Units",
             description="Flag if bus is in service",

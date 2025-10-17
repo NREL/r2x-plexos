@@ -7,7 +7,7 @@ repos:
         args: ["--maxkb=10000"]
       - id: check-json
       - id: pretty-format-json
-        args: ["--autofix", "--sort-keys"]
+        args: ["--autofix"]
       - id: check-yaml
         args: ["--allow-multiple-documents"]
         exclude: ".github"

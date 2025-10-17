@@ -385,6 +385,7 @@ class PLEXOSLine(PLEXOSObject):
     ] = 0
     max_units_built: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Max Units Built",
             description="Maximum number of units automatically constructed in aggregate over the planning horizon",
@@ -715,6 +716,7 @@ class PLEXOSLine(PLEXOSObject):
     ] = 0
     units: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Units",
             description="Flag if the line is in service (0,1)",

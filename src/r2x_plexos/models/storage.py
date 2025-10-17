@@ -75,6 +75,7 @@ class PLEXOSStorage(PLEXOSObject):
     ] = 1
     end_effects_method: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="End Effects Method",
             description="Method used to handle end-of-period storage.",

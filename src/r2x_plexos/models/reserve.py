@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import Field
 
 from .component import PLEXOSObject
+from .property_specification import PLEXOSProperty
 
 
 class PLEXOSReserve(PLEXOSObject):
@@ -84,6 +85,7 @@ class PLEXOSReserve(PLEXOSObject):
     ] = -1
     is_enabled: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Is Enabled",
             description="Flag if the reserve is enabled",
@@ -116,6 +118,7 @@ class PLEXOSReserve(PLEXOSObject):
     ] = 0
     mutually_exclusive: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Mutually Exclusive",
             description="If generation capacity providing this reserve is mutually exclusive to other reserves",
@@ -183,6 +186,7 @@ class PLEXOSReserve(PLEXOSObject):
     ] = 0
     timeframe: Annotated[
         float | int,
+        PLEXOSProperty(units="s"),
         Field(
             alias="Timeframe",
             description="Timeframe in which the reserve is required",
@@ -191,6 +195,7 @@ class PLEXOSReserve(PLEXOSObject):
     ] = 1e30
     type: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Type",
             description="Reserve type",

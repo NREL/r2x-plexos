@@ -19,7 +19,7 @@ class PLEXOSBattery(PLEXOSObject):
             description="Initial state of charge of the battery",
             ge=0,
         ),
-    ]
+    ] = 0
     charge_efficiency: Annotated[
         float | int,
         PLEXOSProperty(units="%"),
@@ -28,7 +28,7 @@ class PLEXOSBattery(PLEXOSObject):
             description="Charge efficiency",
             ge=0,
         ),
-    ]
+    ] = 70
     discharge_efficiency: Annotated[
         float | int,
         PLEXOSProperty(units="%"),
@@ -37,7 +37,7 @@ class PLEXOSBattery(PLEXOSObject):
             description="Discharge efficiency",
             ge=0,
         ),
-    ]
+    ] = 100
     capacity: Annotated[
         float | int,
         PLEXOSProperty(units="MWh"),
@@ -46,7 +46,7 @@ class PLEXOSBattery(PLEXOSObject):
             description="Capacity of the battery",
             ge=0,
         ),
-    ]
+    ] = 0
     max_power: Annotated[
         float | int,
         PLEXOSProperty(units="MW"),
@@ -55,7 +55,7 @@ class PLEXOSBattery(PLEXOSObject):
             description="Output power",
             ge=0,
         ),
-    ]
+    ] = 0
     units: Annotated[
         float | int,
         Field(
@@ -63,7 +63,7 @@ class PLEXOSBattery(PLEXOSObject):
             description="Number of units of the storage",
             ge=0,
         ),
-    ]
+    ] = 0
     aux_base: Annotated[
         float | int,
         PLEXOSProperty(units="MW"),
@@ -222,6 +222,7 @@ class PLEXOSBattery(PLEXOSObject):
     ] = 1000000
     decomposition_method: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Decomposition Method",
             description="Method used to pass the optimal state-of-charge from one simulation phase to the next",
@@ -303,6 +304,7 @@ class PLEXOSBattery(PLEXOSObject):
     ] = 0
     end_effects_method: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="End Effects Method",
             description="Method used to value or constrain end-of-period energy.",
@@ -389,6 +391,7 @@ class PLEXOSBattery(PLEXOSObject):
     ] = 0
     expansion_optimality: Annotated[
         int,
+        PLEXOSProperty,
         Field(
             alias="Expansion Optimality",
             description="Expansion planning integerization scheme.",
@@ -405,6 +408,7 @@ class PLEXOSBattery(PLEXOSObject):
     ] = 0
     firm_capacity_unit_count: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Firm Capacity Unit Count",
             description="The total number of units installed in band corresponding to the same band of [Firm Capacity]",
@@ -806,6 +810,7 @@ class PLEXOSBattery(PLEXOSObject):
     ] = 0
     max_units_built: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Max PLEXOSProperty Built",
             description="Maximum number of BESS units that can be built",
@@ -1221,6 +1226,7 @@ class PLEXOSBattery(PLEXOSObject):
     ] = -1
     project_start_date: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Project Start Date",
             description="First date at which a BESS unit can be built",

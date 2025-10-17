@@ -14,6 +14,7 @@ class PLEXOSRow:
     period_type: str | None = None
     period_name: str | None = None
     timeslice_name: str | None = None
+    timeslice_id: int | None = None
     band: int = Field(default=1, ge=1)
     units: str | None = None
     action: str | None = "="
@@ -26,6 +27,7 @@ class PLEXOSRow:
     date_from: str | None = None
     date_to: str | None = None
     text: str | None = None
+    text_class_name: str | None = None  # Type of text reference: "Data File", "Timeslice", "Variable"
 
 
 @dataclass(frozen=True)

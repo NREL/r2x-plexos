@@ -38,7 +38,8 @@ def test_auto_resolve_property_with_priority():
         ]
     )
     gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)
-    with scenario_priority({"High": 1, "Base": 2}):
+    # PLEXOS convention: Higher priority number = higher priority
+    with scenario_priority({"Base": 1, "High": 2}):
         assert gen.max_capacity == 120.0
         assert gen.min_capacity == 50.0
 

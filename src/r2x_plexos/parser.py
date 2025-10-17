@@ -29,6 +29,7 @@ from .models import (
     set_scenario_priority,
 )
 from .models.utils import get_field_name_by_alias
+from .models.variable import PLEXOSVariable
 from .utils_mappings import PLEXOS_TYPE_MAP
 from .utils_plexosdb import get_collection_enum, get_collection_name
 
@@ -371,6 +372,64 @@ class PLEXOSParser(BaseParser):
         logger.trace(f"Resolved datafile path: {datafile_path} -> {full_path}")
         return full_path
 
+    def _get_variable_profile_value(self, variable_id: int, variable_name: str) -> float:
+        """Get the profile value from a variable component using scenario priority.
+
+        Note: Variables may have properties in different scenarios than the current model.
+        We check all entries to find a profile value, respecting scenario priority if available.
+        """
+        variable = self._component_cache.get(variable_id)
+        if not variable:
+            raise ValueError(f"Variable {variable_name} (ID={variable_id}) not found in component cache")
+
+        if not isinstance(variable, PLEXOSVariable):
+            raise ValueError(f"Component ID={variable_id} is not a Variable, got {type(variable).__name__}")
+
+        profile_prop = variable.get_property_value("profile")
+        if profile_prop is None:
+            raise ValueError(f"Variable {variable_name} has no profile property")
+
+        # Try scenario priority resolution first
+        profile_value = profile_prop.get_value()
+        if profile_value is not None:
+            return float(profile_value)
+
+        # If no value from priority resolution, check all entries
+        # (Variable properties may exist in scenarios not loaded for the current model)
+        for entry in profile_prop.entries.values():
+            if entry.value is not None:
+                return float(entry.value)
+
+        raise ValueError(f"Variable {variable_name} has no profile value in any entry")
+
+    def _apply_action_to_timeseries(
+        self, ts: SingleTimeSeries, action: str, value: float
+    ) -> SingleTimeSeries:
+        """Apply an action operator to a time series."""
+        action_map = {"\u00d7": "*", "x": "*", "*": "*", "+": "+", "-": "-", "/": "/", "=": "="}
+        normalized_action = action_map.get(action, action)
+
+        if normalized_action not in action_map.values():
+            raise ValueError(f"Unsupported action: {action}")
+
+        if normalized_action == "=" or normalized_action is None:
+            return ts
+
+        if normalized_action == "*":
+            new_data = [x * value for x in ts.data]
+        elif normalized_action == "+":
+            new_data = [x + value for x in ts.data]
+        elif normalized_action == "-":
+            new_data = [x - value for x in ts.data]
+        elif normalized_action == "/":
+            if value == 0:
+                raise ValueError("Cannot divide by zero")
+            new_data = [x / value for x in ts.data]
+        else:
+            return ts
+
+        return SingleTimeSeries.from_array(new_data, ts.name, ts.initial_timestamp, ts.resolution)
+
     def _get_or_parse_timeseries(
         self,
         file_path: str,
@@ -433,6 +492,27 @@ class PLEXOSParser(BaseParser):
             reference_year=reference_year,
             timeslices=timeslices,
         )
+
+        property_value = component.get_property_value(ref.field_name)
+        if isinstance(property_value, PLEXOSPropertyValue):
+            entry = property_value.get_entry()
+            if entry and entry.variable_name and entry.variable_id:
+                logger.debug(
+                    f"Property {ref.component_name}.{ref.field_name} has variable "
+                    f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
+                )
+                variable_value = self._get_variable_profile_value(entry.variable_id, entry.variable_name)
+                logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
+
+                if entry.action:
+                    ts_max_before = max(ts.data)
+                    ts = self._apply_action_to_timeseries(ts, entry.action, variable_value)
+                    ts_max_after = max(ts.data)
+
+                    logger.debug(
+                        f"Applied action {entry.action}: time series max "
+                        f"before={ts_max_before}, after={ts_max_after}"
+                    )
 
         self._attach_or_update_property(component, ref, ts, horizon)
         self._attached_timeseries[cache_key] = True
@@ -531,6 +611,27 @@ class PLEXOSParser(BaseParser):
             reference_year=reference_year,
             timeslices=timeslices,
         )
+
+        property_value = component.get_property_value(ref.field_name)
+        if isinstance(property_value, PLEXOSPropertyValue):
+            entry = property_value.get_entry()
+            if entry and entry.variable_name and entry.variable_id:
+                logger.debug(
+                    f"Property {ref.component_name}.{ref.field_name} has variable "
+                    f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
+                )
+                variable_value = self._get_variable_profile_value(entry.variable_id, entry.variable_name)
+                logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
+
+                if entry.action:
+                    ts_max_before = max(ts.data)
+                    ts = self._apply_action_to_timeseries(ts, entry.action, variable_value)
+                    ts_max_after = max(ts.data)
+
+                    logger.debug(
+                        f"Applied action {entry.action}: time series max "
+                        f"before={ts_max_before}, after={ts_max_after}"
+                    )
 
         self._attach_or_update_property(component, ref, ts, horizon)
         self._attached_timeseries[cache_key] = True

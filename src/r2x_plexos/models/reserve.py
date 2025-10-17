@@ -28,6 +28,7 @@ class PLEXOSReserve(PLEXOSObject):
     ] = 0
     duration: Annotated[
         float | int,
+        PLEXOSProperty(units="s"),
         Field(
             alias="Duration",
             description="Time over which the required response must be maintained",
@@ -212,6 +213,7 @@ class PLEXOSReserve(PLEXOSObject):
     ] = 0
     vors: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="VoRS",
             description="Value of reserve shortage (-1 sets hard constraint)",

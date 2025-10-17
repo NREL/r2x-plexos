@@ -758,6 +758,7 @@ class PLEXOSLine(PLEXOSObject):
     ] = 0
     flow_coefficient: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Flow Coefficient",
             description="Flow coefficient",

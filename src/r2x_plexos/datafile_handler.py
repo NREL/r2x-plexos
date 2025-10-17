@@ -610,11 +610,13 @@ def get_timeslice_patterns_hours(timeslice: "PLEXOSTimeslice", year: int) -> set
 
 def extract_patterns_from_timeslice(timeslice: "PLEXOSTimeslice") -> list[str]:
     """Extract pattern strings from a timeslice object."""
-    if hasattr(timeslice.include, "get_timeslices"):
-        return timeslice.include.get_timeslices() or []
-    elif hasattr(timeslice.include, "value"):
-        return [timeslice.include.value]
-    return []
+    # Get the include property value
+    include_prop = timeslice.get_property_value("include")
+    if not include_prop:
+        return []
+
+    # Extract text patterns from property entries
+    return [entry.text for entry in include_prop.entries.values() if entry.text]
 
 
 @parse_file.register

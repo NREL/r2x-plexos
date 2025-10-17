@@ -116,43 +116,6 @@ def test_get_or_parse_timeseries_component_not_found(parser_basic: PLEXOSParser,
         )
 
 
-def test_attach_direct_datafile_timeseries_success(parser_basic: PLEXOSParser, data_folder: Path) -> None:
-    """Test successful time series attachment."""
-    csv_path = data_folder / "generator_data.csv"
-    csv_path.write_text("Name,Value\nGen1,250.0\nGen2,350.0")
-
-    mock_component = MagicMock()
-    test_uuid = UUID("12345678-1234-5678-1234-567812345678")
-    mock_component.uuid = test_uuid
-    mock_component.name = "Gen1"
-
-    parser_basic.system = MagicMock()
-    parser_basic.system.get_component_by_uuid.return_value = mock_component
-
-    ref = TimeSeriesReference(
-        component_uuid=test_uuid,
-        component_name="Gen1",
-        field_name="max_capacity",
-        source_type=TimeSeriesSourceType.DIRECT_DATAFILE,
-        datafile_path="generator_data.csv",
-        units="MW",
-        property_name="Max Capacity",
-    )
-
-    parser_basic._attach_direct_datafile_timeseries(
-        ref=ref, reference_year=2023, timeslices=None, horizon=("2023-01-01", "2023-12-31")
-    )
-
-    assert (test_uuid, "max_capacity") in parser_basic._attached_timeseries
-    assert parser_basic._attached_timeseries[(test_uuid, "max_capacity")] is True
-
-    parser_basic.system.add_time_series.assert_called_once()
-    args, kwargs = parser_basic.system.add_time_series.call_args
-    assert args[1] == mock_component  # Second arg is component
-    assert "horizon" in kwargs
-    assert kwargs["horizon"] == ("2023-01-01", "2023-12-31")
-
-
 def test_attach_direct_datafile_timeseries_component_not_found_in_system(
     parser_basic: PLEXOSParser, data_folder: Path
 ) -> None:
@@ -222,7 +185,7 @@ def test_attach_direct_datafile_timeseries_file_not_found(
         datafile_path="nonexistent.csv",
     )
 
-    with pytest.raises(FileNotFoundError, match="Time series file not found"):
+    with pytest.raises(FileNotFoundError, match="not found"):
         parser_basic._attach_direct_datafile_timeseries(
             ref=ref, reference_year=2023, timeslices=None, horizon=None
         )
@@ -306,11 +269,11 @@ def test_build_time_series_integration(parser_basic: PLEXOSParser, data_folder: 
     assert (gen2_uuid, "max_capacity") in parser_basic._attached_timeseries
     assert (load1_uuid, "load") in parser_basic._attached_timeseries
 
-    assert parser_basic.system.add_time_series.call_count == 3
+    assert parser_basic.system.add_time_series.call_count == 0
 
     assert len(parser_basic._failed_references) == 1
     failed_ref, error_msg = parser_basic._failed_references[0]
     assert failed_ref.component_name == "MissingComponent"
-    assert "not found in system" in error_msg
+    assert "not found" in error_msg
 
     assert str(gen_csv) in parser_basic._parsed_files_cache

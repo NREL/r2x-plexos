@@ -14,7 +14,7 @@ from uuid import UUID
 from infrasys import Component
 from infrasys.time_series_models import SingleTimeSeries
 from loguru import logger
-from plexosdb import ClassEnum, CollectionEnum, PlexosDB
+from plexosdb import ClassEnum, PlexosDB
 
 from r2x_core import BaseParser, DataStore
 from r2x_plexos.models.membership import PLEXOSMembership
@@ -24,6 +24,7 @@ from r2x_plexos.models.utils import get_field_name_by_alias
 from .config import PLEXOSConfig
 from .models.component import PLEXOSObject
 from .models.context import get_horizon, set_scenario_priority
+from .plexosdb_utils import get_collection_enum, get_collection_name
 from .util_mappings import PLEXOS_TYPE_MAP
 
 __version__ = version("r2x_plexos")
@@ -215,17 +216,14 @@ class PLEXOSParser(BaseParser):
             membership_id = membership_dict["membership_id"]
             collection_id = membership_dict["collection_id"]
 
-            # Get collection name
-            collection_name = self._get_collection_name(collection_id)
+            collection_name = get_collection_name(self.db, collection_id)
             if collection_name is None:
                 continue
 
-            # Get collection enum
-            collection_enum = self._get_collection_enum(collection_name)
+            collection_enum = get_collection_enum(collection_name)
             if collection_enum is None:
                 continue
 
-            # Find parent and child components
             parent_object = self._component_cache.get(parent_object_id)
             child_object = self._component_cache.get(child_object_id)
 
@@ -242,53 +240,6 @@ class PLEXOSParser(BaseParser):
                     collection=collection_enum,
                 ),
             )
-
-    def _get_collection_name(self, collection_id: int) -> str | None:
-        """Get collection name from collection ID.
-
-        Parameters
-        ----------
-        collection_id : int
-            The collection ID to lookup
-
-        Returns
-        -------
-        str | None
-            Collection name with spaces removed, or None if not found
-        """
-        collection_name_result = self.db._db.fetchone(
-            "SELECT name from t_collection where collection_id = ?",
-            (collection_id,),
-        )
-        if collection_name_result is None:
-            logger.debug("Collection not found for ID {}", collection_id)
-            return None
-
-        # fetchone returns tuple[Any, ...], we know first element is the name string
-        collection_name: str = collection_name_result[0]
-        return collection_name.replace(" ", "")
-
-    def _get_collection_enum(self, collection_name: str) -> CollectionEnum | None:
-        """Get CollectionEnum from collection name.
-
-        Parameters
-        ----------
-        collection_name : str
-            The collection name to lookup
-
-        Returns
-        -------
-        CollectionEnum | None
-            The collection enum or None if not found
-        """
-        try:
-            return CollectionEnum[collection_name]
-        except KeyError:
-            logger.warning(
-                "Collection={} not found on `CollectionEnum`. Skipping it.",
-                collection_name,
-            )
-            return None
 
     def _create_component(self, obj_type: str, db_rows: list[dict[str, Any]]) -> PLEXOSObject | None:
         """Create a PLEXOS component from database rows.
@@ -572,7 +523,7 @@ class PLEXOSParser(BaseParser):
 
         file_path = self._resolve_datafile_path(ref.datafile_path)
         if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise FileNotFoundError(f"Data file not found: {file_path}")
 
         ts = self._get_or_parse_timeseries(
             file_path=str(file_path),

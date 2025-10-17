@@ -1,7 +1,8 @@
 """PLEXOS property models."""
 
 from .base import PLEXOSRow
-from .component import PLEXOSComponent
+from .battery import PLEXOSBattery
+from .component import PLEXOSObject
 from .context import (
     get_horizon,
     get_scenario_priority,
@@ -11,16 +12,54 @@ from .context import (
     set_horizon,
     set_scenario_priority,
 )
+from .datafile import PLEXOSDatafile
+from .fuel import PLEXOSFuel
+from .generator import PLEXOSGenerator
+from .interface import PLEXOSInterface
+from .line import PLEXOSLine
+from .membership import PLEXOSMembership
+from .model import PLEXOSHorizon, PLEXOSModel
+from .node import PLEXOSNode
 from .property import PLEXOSPropertyValue
 from .property_specification import PLEXOSProperty, PropertySpecification
+from .region import PLEXOSRegion
+from .registry import PLEXOSComponentRegistry
+from .reserve import PLEXOSReserve
+from .scenario import PLEXOSScenario
+from .storage import PLEXOSStorage
+from .timeslice import PLEXOSTimeslice
+from .transformers import PLEXOSTransformer
+from .utils import get_field_name_by_alias
+from .variable import PLEXOSVariable
+from .zone import PLEXOSZone
 
 __all__ = [
-    "PLEXOSComponent",
+    "PLEXOSBattery",
+    "PLEXOSComponentRegistry",
+    "PLEXOSDatafile",
+    "PLEXOSFuel",
+    "PLEXOSGenerator",
+    "PLEXOSHorizon",
+    "PLEXOSInterface",
+    "PLEXOSLine",
+    "PLEXOSMembership",
+    "PLEXOSModel",
+    "PLEXOSNode",
+    "PLEXOSObject",
     "PLEXOSProperty",
     "PLEXOSPropertyValue",
+    "PLEXOSRegion",
+    "PLEXOSReserve",
     "PLEXOSRow",
+    "PLEXOSScenario",
+    "PLEXOSStorage",
+    "PLEXOSTimeslice",
+    "PLEXOSTransformer",
+    "PLEXOSVariable",
+    "PLEXOSZone",
     "PropertySpecification",
     "PropertyValue",
+    "get_field_name_by_alias",
     "get_horizon",
     "get_scenario_priority",
     "horizon",

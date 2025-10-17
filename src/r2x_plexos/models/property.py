@@ -5,8 +5,16 @@ from dataclasses import dataclass, field
 from functools import total_ordering
 from typing import Any
 
+from plexosdb import ClassEnum
+
 from .base import PLEXOSPropertyKey, PLEXOSRow
 from .context import get_horizon, get_scenario_priority
+
+# Constants
+DEFAULT_BAND = 1
+MAX_REPR_VALUES = 5
+PRIORITY_NO_SCENARIO = 0  # Lowest priority (no scenario assigned)
+PRIORITY_UNKNOWN_SCENARIO = 0
 
 
 @total_ordering
@@ -38,7 +46,7 @@ class PLEXOSPropertyValue:
         prop.add_entry(
             value=data.get("value"),
             scenario=data.get("scenario"),
-            band=data.get("band", 1),
+            band=data.get("band", DEFAULT_BAND),
             timeslice=data.get("timeslice"),
             date_from=data.get("date_from"),
             date_to=data.get("date_to"),
@@ -66,15 +74,32 @@ class PLEXOSPropertyValue:
         """Create property from a list of record dictionaries."""
         prop = cls(units=units)
         for record in records:
+            # Some datasets place CSV filenames in generic text/value fields.
+            possible_text = record.get("text") or record.get("value")
+            csv_in_text = None
+            if isinstance(possible_text, str) and possible_text.lower().endswith(".csv"):
+                csv_in_text = possible_text
             prop.add_entry(
                 value=record.get("value"),
                 scenario=record.get("scenario"),
-                band=record.get("band", 1),
+                band=record.get("band", DEFAULT_BAND),
                 timeslice=record.get("timeslice") or record.get("time_slice"),
                 date_from=record.get("date_from"),
                 date_to=record.get("date_to"),
+                # Preserve datafile metadata so downstream time series resolution works
+                datafile_name=(
+                    record.get("datafile_name")
+                    or record.get("datafile")
+                    or record.get("filename")
+                    or csv_in_text
+                ),
+                datafile_id=record.get("datafile_id"),
+                column_name=record.get("column_name") or record.get("column"),
+                # Variable metadata
                 variable_name=record.get("variable_name") or record.get("variable"),
+                variable_id=record.get("variable_id"),
                 text=record.get("text"),
+                text_class_name=record.get("text_class_name"),  # Capture type of text reference
                 action=record.get("action"),
                 units=record.get("units") or units,
             )
@@ -84,7 +109,7 @@ class PLEXOSPropertyValue:
         self,
         value: Any,
         scenario: str | None = None,
-        band: int = 1,
+        band: int = DEFAULT_BAND,
         timeslice: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
@@ -97,6 +122,7 @@ class PLEXOSPropertyValue:
         action: str | None = None,
         units: str | None = None,
         text: str | None = None,
+        text_class_name: str | None = None,
     ) -> None:
         """Add a property value entry with full metadata."""
         key = PLEXOSPropertyKey(
@@ -126,6 +152,7 @@ class PLEXOSPropertyValue:
             action=action,
             units=units,
             text=text,
+            text_class_name=text_class_name,
         )
 
         self.entries[key] = row
@@ -172,14 +199,12 @@ class PLEXOSPropertyValue:
         if not self.entries:
             return None
 
-        # Filter by horizon if set
         horizon = get_horizon()
         if horizon:
             filtered_entries = self._filter_by_horizon(horizon)
             if not filtered_entries:
                 return None
 
-            # Temporarily swap entries and rebuild indexes
             original_entries = self.entries
             original_indexes = self._save_indexes()
             try:
@@ -187,7 +212,6 @@ class PLEXOSPropertyValue:
                 self._rebuild_indexes()
                 return self._resolve_value()
             finally:
-                # Restore original entries and indexes
                 self.entries = original_entries
                 self._restore_indexes(original_indexes)
         else:
@@ -282,6 +306,71 @@ class PLEXOSPropertyValue:
         """Get all unique variables."""
         return sorted(self._by_variable.keys())
 
+    def get_filepath(self) -> str | None:
+        """Get filepath if this property references a Data File via text field.
+
+        Returns the filepath string from the text field when text_class_name='Data File'.
+        Useful for properties like DataFile.Filename.
+
+        Returns
+        -------
+        str | None
+            Filepath string or None if no filepath reference exists
+        """
+        for entry in self.entries.values():
+            if (
+                entry.text
+                and hasattr(entry, "text_class_name")
+                and entry.text_class_name == ClassEnum.DataFile
+            ):
+                return entry.text
+        return None
+
+    def get_variable_reference(self) -> dict[str, Any] | None:
+        """Get variable reference if this property uses a Variable.
+
+        Returns dictionary with variable metadata including name, id, and action.
+
+        Returns
+        -------
+        dict | None
+            Dictionary with keys: 'name', 'id', 'action' or None if no variable reference
+        """
+        for entry in self.entries.values():
+            if entry.variable_name:
+                return {"name": entry.variable_name, "id": entry.variable_id, "action": entry.action}
+        return None
+
+    def get_datafile_reference(self) -> dict[str, Any] | None:
+        """Get datafile reference if this property uses another DataFile object.
+
+        Returns dictionary with datafile metadata including name and id.
+        Different from get_filepath() which returns a direct filepath string.
+
+        Returns
+        -------
+        dict | None
+            Dictionary with keys: 'name', 'id' or None if no datafile reference
+        """
+        for entry in self.entries.values():
+            if entry.datafile_name:
+                return {"name": entry.datafile_name, "id": entry.datafile_id}
+        return None
+
+    def get_text_value(self) -> str | None:
+        """Get single text value if property has exactly one text entry.
+
+        Convenience method for properties with a single text value.
+        For multiple texts, use get_text() instead.
+
+        Returns
+        -------
+        str | None
+            Text string if exactly one text exists, None otherwise
+        """
+        texts = self.get_text()
+        return texts[0] if len(texts) == 1 else None
+
     def has_bands(self) -> bool:
         """Check if this property has multiple bands."""
         return len(self._by_band) > 1
@@ -304,11 +393,31 @@ class PLEXOSPropertyValue:
 
     def has_datafile(self) -> bool:
         """Check if this property references a datafile."""
-        return any(row.datafile_name or row.datafile_id for row in self.entries.values())
+        return any(
+            row.datafile_name
+            or row.datafile_id
+            or (isinstance(row.text, str) and row.text.lower().endswith(".csv"))
+            for row in self.entries.values()
+        )
 
     def has_variable(self) -> bool:
         """Check if this property references a variable."""
         return any(row.variable_name or row.variable_id for row in self.entries.values())
+
+    def has_complex_data(self) -> bool:
+        """Check if property has complex data beyond a simple value.
+
+        Complex data includes:
+        - Datafile or variable references
+        - Multiple scenarios
+        - Multiple entries (bands, timeslices, dates)
+
+        Returns
+        -------
+        bool
+            True if property has complex data structure
+        """
+        return self.has_datafile() or self.has_variable() or self.has_scenarios() or len(self.entries) > 1
 
     def has_text(self) -> bool:
         """Check if this property has text values."""
@@ -347,9 +456,9 @@ class PLEXOSPropertyValue:
             parts.append("has_variable=True")
 
         if self.entries:
-            sample_values = list(self.entries.values())[:3]
+            sample_values = list(self.entries.values())[:MAX_REPR_VALUES]
             values_str = ", ".join(str(row.value) for row in sample_values)
-            if len(self.entries) > 3:
+            if len(self.entries) > MAX_REPR_VALUES:
                 values_str += ", ..."
             parts.append(f"values=[{values_str}]")
 
@@ -362,6 +471,10 @@ class PLEXOSPropertyValue:
     def __eq__(self, other: Any) -> bool:
         """Equal comparison."""
         return self._compare(other, lambda x, y: x == y)
+
+    def __ge__(self, other: Any) -> bool:
+        """Equal comparison."""
+        return self._compare(other, lambda x, y: x >= y)
 
     def _compare(self, other: Any, op: Callable[[Any, Any], bool]) -> bool:
         """Compare this property with another value."""
@@ -437,24 +550,31 @@ class PLEXOSPropertyValue:
             self._add_to_indexes(key)
 
     def _resolve_by_priority(self, priority: dict[str, int]) -> Any:
-        """Resolve value using scenario priority (lower number = higher priority)."""
-        candidates: list[tuple[str | None, Any, float]] = []
-
+        """Resolve value using scenario priority (higher number = higher priority, following PLEXOS convention)."""
         # Look for entries, preferring simple values (band 1, no timeslice, no dates)
         # but also considering entries with timeslices/dates if no simple values exist
         simple_candidates: list[tuple[str | None, Any, float]] = []
         complex_candidates: list[tuple[str | None, Any, float]] = []
 
         for key, row in self.entries.items():
+            # Assign priority based on scenario
+            prio: float
             if key.scenario is None:
-                prio = float("inf")
+                prio = float(PRIORITY_NO_SCENARIO)
             elif key.scenario in priority:
                 prio = float(priority[key.scenario])
             else:
-                prio = float("inf") - 1
+                prio = float(PRIORITY_UNKNOWN_SCENARIO)
 
             # Categorize as simple or complex
-            if key.band == 1 and key.timeslice is None and key.date_from is None and key.date_to is None:
+            is_simple = (
+                key.band == DEFAULT_BAND
+                and key.timeslice is None
+                and key.date_from is None
+                and key.date_to is None
+            )
+
+            if is_simple:
                 simple_candidates.append((key.scenario, row.value, prio))
             else:
                 complex_candidates.append((key.scenario, row.value, prio))
@@ -465,7 +585,8 @@ class PLEXOSPropertyValue:
         if not candidates:
             return self.get_value_for()
 
-        candidates.sort(key=lambda x: x[2])
+        # Sort descending: highest priority value wins (PLEXOS convention)
+        candidates.sort(key=lambda x: x[2], reverse=True)
         return candidates[0][1]
 
     def _save_indexes(self) -> dict[str, Any]:

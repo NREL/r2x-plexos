@@ -23,7 +23,8 @@ def test_get_value_with_priority_returns_highest():
             {"scenario": "Low", "value": 80},
         ]
     )
-    with scenario_priority({"Test": 1, "High": 2, "Base": 3}):
+    # PLEXOS: higher priority number = higher priority, so High(3) > Base(2) > Test(1)
+    with scenario_priority({"Test": 1, "Base": 2, "High": 3}):
         result = prop.get_value()
         assert result == 120.0
 
@@ -97,8 +98,9 @@ def test_priority_order():
             {"scenario": "Scenario3", "value": 300},
         ]
     )
-    with scenario_priority({"Scenario3": 1, "Scenario1": 2, "Scenario2": 3}):
+    # PLEXOS: higher priority number = higher priority
+    with scenario_priority({"Scenario1": 1, "Scenario2": 2, "Scenario3": 3}):
         assert prop.get_value() == 300.0
 
-    with scenario_priority({"Scenario1": 1, "Scenario3": 2, "Scenario2": 3}):
+    with scenario_priority({"Scenario3": 1, "Scenario2": 2, "Scenario1": 3}):
         assert prop.get_value() == 100.0

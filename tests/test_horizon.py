@@ -100,13 +100,14 @@ def test_scenario_and_horizon_combined():
 
     assert gen.max_capacity == {"s1": 10.0, "s2": 20.0, "s3": 30.0}
 
-    with scenario_priority({"s2": 1, "s1": 2, "s3": 3}):
+    # PLEXOS: higher priority number = higher priority
+    with scenario_priority({"s1": 1, "s3": 2, "s2": 3}):
         assert gen.max_capacity == 20.0
 
     with horizon("2024-01-01", "2024-12-31"):
         assert gen.max_capacity == {"s1": 10.0, "s2": 20.0}
 
-    with scenario_and_horizon({"s2": 1, "s1": 2}, "2024-01-01", "2024-12-31"):
+    with scenario_and_horizon({"s1": 1, "s2": 2}, "2024-01-01", "2024-12-31"):
         assert gen.max_capacity == 20.0
 
     with scenario_and_horizon({"s3": 1}, "2025-01-01", "2025-12-31"):
@@ -216,8 +217,9 @@ def test_horizon_with_scenarios_and_timeslices():
     with horizon("2024-07-01", "2024-12-31"):
         assert gen.max_capacity == {"s1": 15.0, "s2": 25.0}
 
-    with scenario_and_horizon({"s2": 1, "s1": 2}, "2024-01-01", "2024-06-30"):
+    # PLEXOS: higher priority number = higher priority
+    with scenario_and_horizon({"s1": 1, "s2": 2}, "2024-01-01", "2024-06-30"):
         assert gen.max_capacity == 20.0
 
-    with scenario_and_horizon({"s1": 1, "s2": 2}, "2024-07-01", "2024-12-31"):
+    with scenario_and_horizon({"s2": 1, "s1": 2}, "2024-07-01", "2024-12-31"):
         assert gen.max_capacity == 15.0

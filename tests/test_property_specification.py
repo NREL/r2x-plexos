@@ -15,6 +15,7 @@ class SimpleModel(BaseModel):
 class BandedModel(BaseModel):
     allowed: Annotated[float | int, PLEXOSProperty(units="MW")]
     no_bands: Annotated[float | int, PLEXOSProperty(units="%", allow_bands=False)]
+    enum_value: Annotated[int, PLEXOSProperty(is_enum=True)] = 1
 
 
 def test_property_spec_float_input():
@@ -24,7 +25,7 @@ def test_property_spec_float_input():
 
 
 def test_property_spec_int_input():
-    model = SimpleModel(value=100)
+    model = SimpleModel(value=100.0)
     assert model.value == 100.0
     assert isinstance(model.value, float)
 

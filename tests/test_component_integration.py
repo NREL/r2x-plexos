@@ -23,14 +23,14 @@ from r2x_plexos.models.property import PLEXOSPropertyValue
                 [{"scenario": "test", "value": 10.0}, {"scenario": "test2", "value": 11.0}]
             ),
             10.0,
-            {"test": 1, "test2": 2},
+            {"test": 2, "test2": 1},  # PLEXOS: higher number = higher priority
         ),
         (
             PLEXOSPropertyValue.from_records(
                 [{"scenario": "test", "value": 10.0}, {"scenario": "test2", "value": 11.0}, {"value": 15}]
             ),
             10.0,
-            {"test": 1, "test2": 2},
+            {"test": 2, "test2": 1},  # PLEXOS: higher number = higher priority
         ),
         (PLEXOSPropertyValue.from_dict({"time_slice": "M1", "value": 10.0}), 10.0, None),
         (
@@ -84,7 +84,7 @@ from r2x_plexos.models.property import PLEXOSPropertyValue
                 ]
             ),
             20.0,
-            {"s2": 1, "s1": 2},
+            {"s2": 2, "s1": 1},  # PLEXOS: higher number = higher priority
         ),
         (
             PLEXOSPropertyValue.from_records(
@@ -199,7 +199,7 @@ from r2x_plexos.models.property import PLEXOSPropertyValue
                 ]
             ),
             20.0,
-            {"s2": 1, "s1": 2, "s3": 3},
+            {"s2": 3, "s1": 2, "s3": 1},  # PLEXOS: higher number = higher priority, so s2(3) > s1(2) > s3(1)
         ),
         (
             PLEXOSPropertyValue.from_records(
@@ -250,7 +250,7 @@ from r2x_plexos.models.property import PLEXOSPropertyValue
                 ]
             ),
             20.0,
-            {"s2": 1, "s1": 2},
+            {"s2": 2, "s1": 1},  # PLEXOS: higher number = higher priority
         ),
         # Edge case: Dates with timeslices
         (
@@ -318,7 +318,7 @@ from r2x_plexos.models.property import PLEXOSPropertyValue
                 ]
             ),
             10.0,
-            {"s1": 1, "s2": 2},
+            {"s1": 2, "s2": 1},  # PLEXOS: higher number = higher priority, so s1(2) wins
         ),
     ],
     ids=[
@@ -391,7 +391,7 @@ def test_generator(max_capacity, expected, priority):
             ),
             ("2024-01-01", "2024-12-31"),
             20.0,
-            {"s2": 1, "s1": 2},
+            {"s2": 2, "s1": 1},  # PLEXOS: higher number = higher priority
         ),
         # Horizon + Timeslices
         (
@@ -463,7 +463,7 @@ def test_generator(max_capacity, expected, priority):
             ),
             ("2024-01-01", "2024-12-31"),
             20.0,
-            {"s2": 1, "s1": 2},
+            {"s2": 2, "s1": 1},  # PLEXOS: higher number = higher priority
         ),
         # Horizon + Scenarios + Bands
         (

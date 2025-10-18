@@ -10,6 +10,7 @@ def empty_db(data_folder):
     return db
 
 
+@pytest.mark.slow
 def test_plexosdb_get_collection_name(empty_db):
     collection = CollectionEnum.Generators
     collection_id = empty_db.get_collection_id(collection, ClassEnum.System, ClassEnum.Generator)

@@ -12,9 +12,9 @@ from r2x_plexos.config import PLEXOSConfig
 from r2x_plexos.parser import TimeSeriesReference, TimeSeriesSourceType
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def parser_basic(data_folder) -> PLEXOSParser:
-    """Create a basic parser instance for testing."""
+    """Create a basic parser instance for testing (read-only tests)."""
     config = PLEXOSConfig(model_name="Base", timeseries_dir=None, reference_year=2023)
     data_file = DataFile(name="xml_file", glob="*.xml")
     store = DataStore(folder=data_folder)
@@ -23,6 +23,16 @@ def parser_basic(data_folder) -> PLEXOSParser:
 
 
 @pytest.fixture
+def parser_basic_mutable(data_folder) -> PLEXOSParser:
+    """Create a basic parser instance for tests that modify the parser state."""
+    config = PLEXOSConfig(model_name="Base", timeseries_dir=None, reference_year=2023)
+    data_file = DataFile(name="xml_file", glob="*.xml")
+    store = DataStore(folder=data_folder)
+    store.add_data_file(data_file)
+    return PLEXOSParser(config, store)
+
+
+@pytest.fixture(scope="module")
 def parser_with_timeseries_dir(data_folder) -> PLEXOSParser:
     """Create a parser with timeseries_dir configured."""
     config = PLEXOSConfig(model_name="Base", timeseries_dir="timeseries", reference_year=2023)
@@ -32,6 +42,7 @@ def parser_with_timeseries_dir(data_folder) -> PLEXOSParser:
     return PLEXOSParser(config, store)
 
 
+@pytest.mark.slow
 def test_resolve_datafile_path_basic(parser_basic: PLEXOSParser, data_folder: Path) -> None:
     """Test basic datafile path resolution."""
     result = parser_basic._resolve_datafile_path("test_file.csv")
@@ -39,6 +50,7 @@ def test_resolve_datafile_path_basic(parser_basic: PLEXOSParser, data_folder: Pa
     assert result == expected
 
 
+@pytest.mark.slow
 def test_resolve_datafile_path_with_timeseries_dir(
     parser_with_timeseries_dir: PLEXOSParser, data_folder: Path
 ) -> None:
@@ -48,6 +60,7 @@ def test_resolve_datafile_path_with_timeseries_dir(
     assert result == expected
 
 
+@pytest.mark.slow
 def test_resolve_datafile_path_windows_style(parser_basic: PLEXOSParser, data_folder: Path) -> None:
     """Test Windows-style path normalization."""
     result = parser_basic._resolve_datafile_path("TimeSeries\\Annual\\test_file.csv")
@@ -55,6 +68,7 @@ def test_resolve_datafile_path_windows_style(parser_basic: PLEXOSParser, data_fo
     assert result == expected
 
 
+@pytest.mark.slow
 def test_resolve_datafile_path_subdirectory(parser_basic: PLEXOSParser, data_folder: Path) -> None:
     """Test path resolution with subdirectories."""
     result = parser_basic._resolve_datafile_path("data/annual/test.csv")
@@ -62,18 +76,21 @@ def test_resolve_datafile_path_subdirectory(parser_basic: PLEXOSParser, data_fol
     assert result == expected
 
 
+@pytest.mark.slow
 def test_resolve_datafile_path_none(parser_basic: PLEXOSParser) -> None:
     """Test that None path raises ValueError."""
     with pytest.raises(ValueError, match="No datafile path provided"):
         parser_basic._resolve_datafile_path(None)
 
 
+@pytest.mark.slow
 def test_resolve_datafile_path_empty(parser_basic: PLEXOSParser) -> None:
     """Test that empty path raises ValueError."""
     with pytest.raises(ValueError, match="No datafile path provided"):
         parser_basic._resolve_datafile_path("")
 
 
+@pytest.mark.slow
 def test_get_or_parse_timeseries_value_file(parser_basic: PLEXOSParser, data_folder: Path) -> None:
     """Test parsing a simple value file."""
     csv_path = data_folder / "test_value.csv"
@@ -88,6 +105,7 @@ def test_get_or_parse_timeseries_value_file(parser_basic: PLEXOSParser, data_fol
     assert all(v == 150.0 for v in ts.data)
 
 
+@pytest.mark.slow
 def test_get_or_parse_timeseries_caching(parser_basic: PLEXOSParser, data_folder: Path) -> None:
     """Test that parsed files are cached."""
     csv_path = data_folder / "test_cache.csv"
@@ -105,6 +123,7 @@ def test_get_or_parse_timeseries_caching(parser_basic: PLEXOSParser, data_folder
     assert all(v == 200.0 for v in ts2.data)
 
 
+@pytest.mark.slow
 def test_get_or_parse_timeseries_component_not_found(parser_basic: PLEXOSParser, data_folder: Path) -> None:
     """Test fallback to single time series when component not found but only one exists."""
     csv_path = data_folder / "test_missing.csv"
@@ -117,6 +136,7 @@ def test_get_or_parse_timeseries_component_not_found(parser_basic: PLEXOSParser,
     assert ts.data[0] == 150.0
 
 
+@pytest.mark.slow
 def test_attach_direct_datafile_timeseries_component_not_found_in_system(
     parser_basic: PLEXOSParser, data_folder: Path
 ) -> None:
@@ -142,13 +162,14 @@ def test_attach_direct_datafile_timeseries_component_not_found_in_system(
         )
 
 
+@pytest.mark.slow
 def test_attach_direct_datafile_timeseries_already_attached(
-    parser_basic: PLEXOSParser, data_folder: Path
+    parser_basic_mutable: PLEXOSParser, data_folder: Path
 ) -> None:
     """Test that already attached time series are skipped."""
     test_uuid = UUID("12345678-1234-5678-1234-567812345678")
 
-    parser_basic._attached_timeseries[(test_uuid, "capacity")] = True
+    parser_basic_mutable._attached_timeseries[(test_uuid, "capacity")] = True
 
     ref = TimeSeriesReference(
         component_uuid=test_uuid,
@@ -158,25 +179,26 @@ def test_attach_direct_datafile_timeseries_already_attached(
         datafile_path="test.csv",
     )
 
-    parser_basic.system = MagicMock()
+    parser_basic_mutable.system = MagicMock()
 
-    parser_basic._attach_direct_datafile_timeseries(
+    parser_basic_mutable._attach_direct_datafile_timeseries(
         ref=ref, reference_year=2023, timeslices=None, horizon=None
     )
 
-    parser_basic.system.get_component_by_uuid.assert_not_called()
+    parser_basic_mutable.system.get_component_by_uuid.assert_not_called()
 
 
+@pytest.mark.slow
 def test_attach_direct_datafile_timeseries_file_not_found(
-    parser_basic: PLEXOSParser, data_folder: Path
+    parser_basic_mutable: PLEXOSParser, data_folder: Path
 ) -> None:
     """Test handling of missing datafile."""
     mock_component = MagicMock()
     test_uuid = UUID("12345678-1234-5678-1234-567812345678")
     mock_component.uuid = test_uuid
 
-    parser_basic.system = MagicMock()
-    parser_basic.system.get_component_by_uuid.return_value = mock_component
+    parser_basic_mutable.system = MagicMock()
+    parser_basic_mutable.system.get_component_by_uuid.return_value = mock_component
 
     ref = TimeSeriesReference(
         component_uuid=test_uuid,
@@ -187,12 +209,13 @@ def test_attach_direct_datafile_timeseries_file_not_found(
     )
 
     with pytest.raises(FileNotFoundError, match="not found"):
-        parser_basic._attach_direct_datafile_timeseries(
+        parser_basic_mutable._attach_direct_datafile_timeseries(
             ref=ref, reference_year=2023, timeslices=None, horizon=None
         )
 
 
-def test_build_time_series_integration(parser_basic: PLEXOSParser, data_folder: Path) -> None:
+@pytest.mark.slow
+def test_build_time_series_integration(parser_basic_mutable: PLEXOSParser, data_folder: Path) -> None:
     """Test the full build_time_series workflow."""
     gen_csv = data_folder / "generators.csv"
     gen_csv.write_text("Name,Value\nGen1,500.0\nGen2,750.0\nGen3,1000.0")
@@ -215,7 +238,7 @@ def test_build_time_series_integration(parser_basic: PLEXOSParser, data_folder: 
     load1.uuid = load1_uuid
     load1.name = "Load1"
 
-    parser_basic.system = MagicMock()
+    parser_basic_mutable.system = MagicMock()
 
     def get_component_by_uuid_side_effect(uuid):
         if uuid == gen1_uuid:
@@ -226,10 +249,10 @@ def test_build_time_series_integration(parser_basic: PLEXOSParser, data_folder: 
             return load1
         return None
 
-    parser_basic.system.get_component_by_uuid.side_effect = get_component_by_uuid_side_effect
-    parser_basic.system.get_components.return_value = []  # No timeslices
+    parser_basic_mutable.system.get_component_by_uuid.side_effect = get_component_by_uuid_side_effect
+    parser_basic_mutable.system.get_components.return_value = []  # No timeslices
 
-    parser_basic.time_series_references = [
+    parser_basic_mutable.time_series_references = [
         TimeSeriesReference(
             component_uuid=gen1_uuid,
             component_name="Gen1",
@@ -263,18 +286,18 @@ def test_build_time_series_integration(parser_basic: PLEXOSParser, data_folder: 
         ),
     ]
 
-    parser_basic.build_time_series()
+    parser_basic_mutable.build_time_series()
 
-    assert len(parser_basic._attached_timeseries) == 3  # 3 successful attachments
-    assert (gen1_uuid, "max_capacity") in parser_basic._attached_timeseries
-    assert (gen2_uuid, "max_capacity") in parser_basic._attached_timeseries
-    assert (load1_uuid, "load") in parser_basic._attached_timeseries
+    assert len(parser_basic_mutable._attached_timeseries) == 3  # 3 successful attachments
+    assert (gen1_uuid, "max_capacity") in parser_basic_mutable._attached_timeseries
+    assert (gen2_uuid, "max_capacity") in parser_basic_mutable._attached_timeseries
+    assert (load1_uuid, "load") in parser_basic_mutable._attached_timeseries
 
-    assert parser_basic.system.add_time_series.call_count == 0
+    assert parser_basic_mutable.system.add_time_series.call_count == 0
 
-    assert len(parser_basic._failed_references) == 1
-    failed_ref, error_msg = parser_basic._failed_references[0]
+    assert len(parser_basic_mutable._failed_references) == 1
+    failed_ref, error_msg = parser_basic_mutable._failed_references[0]
     assert failed_ref.component_name == "MissingComponent"
     assert "not found" in error_msg
 
-    assert str(gen_csv) in parser_basic._parsed_files_cache
+    assert str(gen_csv) in parser_basic_mutable._parsed_files_cache

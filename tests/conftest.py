@@ -8,6 +8,12 @@ DATA_FOLDER = "tests/data"
 SIMPLE_XML = "5_bus_system_variables.xml"
 
 
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line("markers", "fast: marks tests as fast (select with '-m fast')")
+
+
 @pytest.fixture(autouse=True)
 def reset_global_context():
     """Reset global scenario priority and horizon context between tests."""
@@ -20,19 +26,21 @@ def reset_global_context():
     set_horizon(None)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def data_folder(pytestconfig: pytest.Config) -> Path:
     return pytestconfig.rootpath.joinpath(DATA_FOLDER)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def simple_xml(data_folder: Path) -> Path:
     xml_path = data_folder.joinpath(SIMPLE_XML)
     return xml_path
 
 
-@pytest.fixture
-def simple_xml_with_reserve_collection_property(simple_xml: Path, tmp_path: Path) -> Path:
+@pytest.fixture(scope="session")
+def simple_xml_with_reserve_collection_property(
+    simple_xml: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
     """Create a test XML with a Reserve that has a collection property on a Region."""
     from plexosdb import ClassEnum, CollectionEnum, PlexosDB
 
@@ -75,6 +83,7 @@ def simple_xml_with_reserve_collection_property(simple_xml: Path, tmp_path: Path
         parent_object_name="TestReserve",
     )
 
+    tmp_path = tmp_path_factory.mktemp("test_xml")
     output_path = tmp_path / "test_reserve_collection_prop.xml"
     db.to_xml(output_path)
 

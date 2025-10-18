@@ -42,7 +42,8 @@ def get_collection_enum(collection_name: str) -> CollectionEnum | None:
     CollectionEnum | None
         The collection enum or None if not found
     """
-    if collection_name not in CollectionEnum:
+    # Check if collection_name is a valid enum member name
+    if collection_name not in CollectionEnum.__members__:
         logger.warning(
             "Collection={} not found on `CollectionEnum`. Skipping it.",
             collection_name,

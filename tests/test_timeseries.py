@@ -106,14 +106,15 @@ def test_get_or_parse_timeseries_caching(parser_basic: PLEXOSParser, data_folder
 
 
 def test_get_or_parse_timeseries_component_not_found(parser_basic: PLEXOSParser, data_folder: Path) -> None:
-    """Test error when component not in file."""
+    """Test fallback to single time series when component not found but only one exists."""
     csv_path = data_folder / "test_missing.csv"
     csv_path.write_text("Name,Value\nGenerator1,150.0")
 
-    with pytest.raises(ValueError, match="Component NonExistent not found"):
-        parser_basic._get_or_parse_timeseries(
-            file_path=str(csv_path), component_name="NonExistent", reference_year=2023
-        )
+    ts = parser_basic._get_or_parse_timeseries(
+        file_path=str(csv_path), component_name="NonExistent", reference_year=2023
+    )
+    assert ts is not None
+    assert ts.data[0] == 150.0
 
 
 def test_attach_direct_datafile_timeseries_component_not_found_in_system(

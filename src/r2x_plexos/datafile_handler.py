@@ -390,7 +390,10 @@ def _(
     if "Year" in collected_df.columns:
         collected_df = collected_df.filter(pl.col("Year") == year)
 
-    component_columns = [col for col in collected_df.columns if col not in ["Year", "Month", "Day", "Period"]]
+    excluded_cols_lower = {"year", "month", "day", "period"}
+    component_columns = [
+        col for col in collected_df.columns if col.lower().strip() not in excluded_cols_lower
+    ]
     ts_map: dict[str, SingleTimeSeries] = {}
     year_start = datetime(year=year, month=1, day=1)
 
@@ -398,15 +401,27 @@ def _(
         hourly_values = [0.0] * total_hours
 
         for row in collected_df.iter_rows(named=True):
-            if any(col not in row or row[col] is None for col in ["Month", "Day", "Period", component]):
+            month_col = find_column_case_insensitive(row, "month")
+            day_col = find_column_case_insensitive(row, "day")
+            period_col = find_column_case_insensitive(row, "period")
+
+            if not all([month_col, day_col, period_col]) or component not in row or row[component] is None:
                 continue
 
-            month = int(row["Month"])
-            day = int(row["Day"])
+            # Type narrowing: at this point we know these are not None
+            assert month_col is not None
+            assert day_col is not None
+            assert period_col is not None
+
+            if any(row[col] is None for col in [month_col, day_col, period_col]):
+                continue
+
+            month = int(row[month_col])
+            day = int(row[day_col])
             if not is_valid_date(month, day):
                 continue
 
-            period = int(row["Period"])
+            period = int(row[period_col])
             if not is_valid_period(period):
                 continue
 

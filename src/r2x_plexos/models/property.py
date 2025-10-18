@@ -13,8 +13,8 @@ from .context import get_horizon, get_scenario_priority
 # Constants
 DEFAULT_BAND = 1
 MAX_REPR_VALUES = 5
-PRIORITY_NO_SCENARIO = 1  # Entries with no scenario (base case) have priority 1
-PRIORITY_UNKNOWN_SCENARIO = 0  # Unknown scenarios have lowest priority
+PRIORITY_NO_SCENARIO = 0  # Entries with no scenario (base case) have priority 0
+PRIORITY_UNKNOWN_SCENARIO = -1  # Unknown scenarios have lowest priority
 
 
 @total_ordering

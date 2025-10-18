@@ -60,6 +60,8 @@ class TimeSeriesReference:
     variable_name: str | None = None
     units: str | None = None
     property_name: str | None = None
+    is_collection_property: bool = False
+    membership_id: int | None = None
 
 
 class PLEXOSParser(BaseParser):
@@ -93,6 +95,9 @@ class PLEXOSParser(BaseParser):
         self._parsed_files_cache: dict[str, dict[str, SingleTimeSeries]] = {}
         self._attached_timeseries: dict[tuple[UUID, str], bool] = {}
         self._failed_references: list[tuple[TimeSeriesReference, str]] = []
+        self._membership_cache: dict[int, PLEXOSMembership] = {}
+        # PropertyRecord from plexosdb.iterate_properties(), stored as dict for flexibility
+        self._collection_properties_cache: dict[int, list[dict[str, Any]]] = {}
 
         if not db:
             # NOTE: We should change either plexosdb db to take xmltree or an
@@ -124,22 +129,41 @@ class PLEXOSParser(BaseParser):
         logger.info("Building PLEXOS system components...")
 
         logger.trace("Querying objects from PLEXOS database...")
-        # Sort by object_id before grouping to ensure all properties for the same object are consecutive
-        sorted_properties = sorted(self.db.iterate_properties(), key=itemgetter("object_id"))
-        for object_id, rows in itertools.groupby(sorted_properties, key=itemgetter("object_id")):
-            rows_list = list(rows)
+        from collections import defaultdict
+
+        main_properties_by_object: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        collection_properties_by_object: dict[int, list[dict[str, Any]]] = defaultdict(list)
+
+        for prop in self.db.iterate_properties():
+            parent_class = prop.get("parent_class")
+            object_id = prop.get("object_id")
+
+            if not object_id or not isinstance(object_id, int):
+                continue
+
+            # Cast PropertyRecord to dict for type compatibility
+            prop_dict: dict[str, Any] = prop  # type: ignore[assignment]
+
+            if parent_class and parent_class != "System":
+                collection_properties_by_object[object_id].append(prop_dict)
+            else:
+                main_properties_by_object[object_id].append(prop_dict)
+
+        self._collection_properties_cache = collection_properties_by_object
+
+        for object_id, rows_list in main_properties_by_object.items():
             if not rows_list:
                 continue
 
-            # PropertyRecord is a TypedDict from plexosdb, treat as dict for compatibility
-            first_row: dict[str, Any] = rows_list[0]  # type: ignore[assignment]
+            first_row = rows_list[0]
             obj_type = first_row["child_class"]
-            component = self._create_component(obj_type, rows_list)  # type: ignore[arg-type]
+            component = self._create_component(obj_type, rows_list)
             if component:
                 self.system.add_component(component)
                 self._component_cache[object_id] = component
 
         self._add_memberships()
+        self._add_collection_properties()
 
         return
 
@@ -244,13 +268,150 @@ class PLEXOSParser(BaseParser):
                 logger.trace("Skip collection {} - missing parent or child", collection_name)
                 continue
 
+            membership = PLEXOSMembership(
+                membership_id=membership_id,
+                parent_object=parent_object,
+                collection=collection_enum,
+            )
+
+            self._membership_cache[membership_id] = membership
+
             self.system.add_supplemental_attribute(
                 child_object,
-                PLEXOSMembership(
+                membership,
+            )
+
+    def _add_collection_properties(self) -> None:
+        """Add collection properties as supplemental attributes."""
+        from collections import defaultdict
+
+        from r2x_plexos.models.collection_property import CollectionProperties
+
+        def to_snake_case(name: str) -> str:
+            import re
+
+            name = name.replace(" ", "_")
+            name = re.sub("([a-z0-9])([A-Z])", r"\1_\2", name)
+            return name.lower()
+
+        for object_id, coll_props_list in self._collection_properties_cache.items():
+            component = self._component_cache.get(object_id)
+            if not component:
+                logger.trace(f"Component for object_id {object_id} not found, skipping collection properties")
+                continue
+
+            memberships = self.system.get_supplemental_attributes_with_component(component, PLEXOSMembership)
+            if not memberships:
+                logger.trace(f"No memberships found for {component.name}, skipping collection properties")
+                continue
+
+            props_by_parent_and_collection: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+
+            for prop in coll_props_list:
+                parent_class = prop.get("parent_class")
+                parent_id = prop.get("parent_id")
+                if parent_class and parent_id:
+                    key = (parent_class, str(parent_id))
+                    props_by_parent_and_collection[key].append(prop)
+
+            for (_parent_class, parent_id_str), props_list in props_by_parent_and_collection.items():
+                parent_id = int(parent_id_str)
+
+                matching_membership = None
+                for mem in memberships:
+                    if mem.parent_object.object_id == parent_id:
+                        matching_membership = mem
+                        break
+
+                if not matching_membership:
+                    logger.trace(f"No matching membership found for parent_id {parent_id}")
+                    continue
+
+                collection_name = (
+                    matching_membership.collection.value if matching_membership.collection else "Unknown"
+                )
+
+                properties_by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
+                for prop in props_list:
+                    prop_name = prop.get("property")
+                    if prop_name:
+                        properties_by_name[prop_name].append(prop)
+
+                property_values: dict[str, PLEXOSPropertyValue] = {}
+                for property_name, prop_rows in properties_by_name.items():
+                    field_name = to_snake_case(property_name)
+                    property_value = PLEXOSPropertyValue.from_records(prop_rows)
+                    property_values[field_name] = property_value
+
+                    if property_value.has_datafile() or property_value.has_variable():
+                        self._register_collection_property_time_series_reference(
+                            component, field_name, property_value, matching_membership.membership_id
+                        )
+
+                if property_values:
+                    collection_props = CollectionProperties(
+                        membership=matching_membership,
+                        collection_name=collection_name,
+                        properties=property_values,
+                    )
+                    self.system.add_supplemental_attribute(component, collection_props)
+                    logger.trace(
+                        f"Added collection properties for {component.name} (membership {matching_membership.membership_id}): "
+                        f"{list(property_values.keys())}"
+                    )
+
+    def _register_collection_property_time_series_reference(
+        self, component: PLEXOSObject, field_name: str, property: PLEXOSPropertyValue, membership_id: int
+    ) -> None:
+        """Register time series reference for collection properties."""
+        if property.has_datafile():
+            for row in property.entries.values():
+                name = row.datafile_name or (
+                    row.text if isinstance(row.text, str) and row.text.lower().endswith(".csv") else None
+                )
+                if not name:
+                    continue
+
+                if name.lower().endswith(".csv"):
+                    self.time_series_references.append(
+                        TimeSeriesReference(
+                            component_uuid=component.uuid,
+                            component_name=component.name,
+                            field_name=field_name,
+                            source_type=TimeSeriesSourceType.DIRECT_DATAFILE,
+                            datafile_path=name,
+                            units=property.units,
+                            is_collection_property=True,
+                            membership_id=membership_id,
+                        )
+                    )
+                else:
+                    self.time_series_references.append(
+                        TimeSeriesReference(
+                            component_uuid=component.uuid,
+                            component_name=component.name,
+                            field_name=field_name,
+                            source_type=TimeSeriesSourceType.DATAFILE_COMPONENT,
+                            datafile_component_name=name,
+                            units=property.units,
+                            is_collection_property=True,
+                            membership_id=membership_id,
+                        )
+                    )
+                break
+
+        elif property.has_variable():
+            self.time_series_references.append(
+                TimeSeriesReference(
+                    component_uuid=component.uuid,
+                    component_name=component.name,
+                    field_name=field_name,
+                    source_type=TimeSeriesSourceType.VARIABLE,
+                    variable_name=property.get_variables()[0],
+                    units=property.units,
+                    is_collection_property=True,
                     membership_id=membership_id,
-                    parent_object=parent_object,
-                    collection=collection_enum,
-                ),
+                )
             )
 
     def _create_component(self, obj_type: str, db_rows: list[dict[str, Any]]) -> PLEXOSObject | None:
@@ -504,26 +665,27 @@ class PLEXOSParser(BaseParser):
             timeslices=timeslices,
         )
 
-        property_value = component.get_property_value(ref.field_name)
-        if isinstance(property_value, PLEXOSPropertyValue):
-            entry = property_value.get_entry()
-            if entry and entry.variable_name and entry.variable_id:
-                logger.debug(
-                    f"Property {ref.component_name}.{ref.field_name} has variable "
-                    f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
-                )
-                variable_value = self._get_variable_profile_value(entry.variable_id, entry.variable_name)
-                logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
-
-                if entry.action:
-                    ts_max_before = max(ts.data)
-                    ts = self._apply_action_to_timeseries(ts, entry.action, variable_value)
-                    ts_max_after = max(ts.data)
-
+        if not ref.is_collection_property:
+            property_value = component.get_property_value(ref.field_name)
+            if isinstance(property_value, PLEXOSPropertyValue):
+                entry = property_value.get_entry()
+                if entry and entry.variable_name and entry.variable_id:
                     logger.debug(
-                        f"Applied action {entry.action}: time series max "
-                        f"before={ts_max_before}, after={ts_max_after}"
+                        f"Property {ref.component_name}.{ref.field_name} has variable "
+                        f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
                     )
+                    variable_value = self._get_variable_profile_value(entry.variable_id, entry.variable_name)
+                    logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
+
+                    if entry.action:
+                        ts_max_before = max(ts.data)
+                        ts = self._apply_action_to_timeseries(ts, entry.action, variable_value)
+                        ts_max_after = max(ts.data)
+
+                        logger.debug(
+                            f"Applied action {entry.action}: time series max "
+                            f"before={ts_max_before}, after={ts_max_after}"
+                        )
 
         self._attach_or_update_property(component, ref, ts, horizon)
         self._attached_timeseries[cache_key] = True
@@ -538,6 +700,10 @@ class PLEXOSParser(BaseParser):
         """Attach time series or update property value if constant."""
         unique_values = set(ts.data)
         is_constant = len(unique_values) == 1
+
+        if ref.is_collection_property:
+            self._attach_collection_property_timeseries(component, ref, ts, horizon, is_constant)
+            return
 
         if is_constant:
             single_value = float(next(iter(unique_values)))
@@ -601,8 +767,95 @@ class PLEXOSParser(BaseParser):
                             text=entry.text,
                         )
                 else:
-                    # Property doesn't have a PLEXOSPropertyValue, set the attribute directly
                     setattr(component, ref.field_name, max_value)
+
+    def _attach_collection_property_timeseries(
+        self,
+        component: PLEXOSObject,
+        ref: TimeSeriesReference,
+        ts: SingleTimeSeries,
+        horizon: tuple[str, str] | None,
+        is_constant: bool,
+    ) -> None:
+        """Attach time series to a collection property."""
+        from r2x_plexos.models.base import PLEXOSRow
+        from r2x_plexos.models.collection_property import CollectionProperties
+
+        coll_props_list = self.system.get_supplemental_attributes_with_component(
+            component, CollectionProperties
+        )
+
+        target_coll_props = None
+        for cp in coll_props_list:
+            if cp.membership.membership_id == ref.membership_id:
+                target_coll_props = cp
+                break
+
+        if not target_coll_props:
+            logger.warning(f"Collection properties not found for membership {ref.membership_id}")
+            return
+
+        if ref.field_name not in target_coll_props.properties:
+            logger.warning(f"Property {ref.field_name} not found in collection properties")
+            return
+
+        property_value = target_coll_props.properties[ref.field_name]
+
+        if is_constant:
+            unique_values = set(ts.data)
+            single_value = float(next(iter(unique_values)))
+            logger.info(
+                f"Updating constant collection property value for {ref.component_name}.{ref.field_name}: {single_value}"
+            )
+
+            for key, entry in list(property_value.entries.items()):
+                property_value.entries[key] = PLEXOSRow(
+                    value=single_value,
+                    units=entry.units,
+                    action=entry.action,
+                    scenario_name=entry.scenario_name,
+                    band=entry.band,
+                    timeslice_name=entry.timeslice_name,
+                    date_from=entry.date_from,
+                    date_to=entry.date_to,
+                    datafile_name=entry.datafile_name,
+                    datafile_id=entry.datafile_id,
+                    column_name=entry.column_name,
+                    variable_name=entry.variable_name,
+                    variable_id=entry.variable_id,
+                    text=entry.text,
+                )
+        else:
+            field_ts = SingleTimeSeries.from_array(
+                data=ts.data,
+                name=ref.field_name,
+                initial_timestamp=ts.initial_timestamp,
+                resolution=ts.resolution,
+            )
+            features = {"horizon": horizon} if horizon else {}
+            logger.trace(
+                f"Attaching time series to collection property {ref.component_name}.{ref.field_name}"
+            )
+            self.system.add_time_series(field_ts, target_coll_props, **features)
+
+            max_value = float(max(ts.data))
+            for key, entry in list(property_value.entries.items()):
+                property_value.entries[key] = PLEXOSRow(
+                    value=max_value,
+                    units=entry.units,
+                    action=entry.action,
+                    scenario_name=entry.scenario_name,
+                    band=entry.band,
+                    timeslice_name=entry.timeslice_name,
+                    date_from=entry.date_from,
+                    date_to=entry.date_to,
+                    datafile_name=entry.datafile_name,
+                    datafile_id=entry.datafile_id,
+                    column_name=entry.column_name,
+                    variable_name=entry.variable_name,
+                    variable_id=entry.variable_id,
+                    text=entry.text,
+                )
 
     def _attach_variable_timeseries(
         self,

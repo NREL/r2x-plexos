@@ -42,11 +42,37 @@ if TYPE_CHECKING:
 class MockTimeslice:
     def __init__(self, name: str, include_pattern: str | None = None) -> None:
         self.name = name
+        self.include_pattern = include_pattern
         if include_pattern:
             self.include = MagicMock()
             self.include.get_timeslices = MagicMock(return_value=[include_pattern])
         else:
             self.include = MagicMock()  # Initialize as a MagicMock rather than None
+
+    def get_property_value(self, property_name: str):
+        """Mock implementation of get_property_value for testing."""
+        if property_name == "include":
+            # Get patterns from include.get_timeslices if available
+            patterns = None
+            if hasattr(self.include, "get_timeslices"):
+                patterns = self.include.get_timeslices()
+
+            # If no patterns from get_timeslices, try include_pattern
+            if not patterns and self.include_pattern:
+                patterns = [self.include_pattern]
+
+            if patterns:
+                # Create mock entries for each pattern
+                mock_entries = {}
+                for i, pattern in enumerate(patterns):
+                    mock_entry = MagicMock()
+                    mock_entry.text = pattern
+                    mock_entries[i] = mock_entry
+
+                mock_prop = MagicMock()
+                mock_prop.entries = mock_entries
+                return mock_prop
+        return None
 
 
 @pytest.fixture

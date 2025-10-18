@@ -2,6 +2,7 @@
 
 from .base import PLEXOSRow
 from .battery import PLEXOSBattery
+from .collection_property import CollectionProperties
 from .component import PLEXOSObject
 from .context import (
     get_horizon,
@@ -34,6 +35,7 @@ from .variable import PLEXOSVariable
 from .zone import PLEXOSZone
 
 __all__ = [
+    "CollectionProperties",
     "PLEXOSBattery",
     "PLEXOSComponentRegistry",
     "PLEXOSDatafile",

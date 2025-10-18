@@ -41,6 +41,7 @@ class TimesliceFile(FileType):
     """File with timeslice columns."""
 
     def __init__(self, timeslices: list["PLEXOSTimeslice"]) -> None:
+        """Assign timeslices."""
         self.timeslices = timeslices
 
 

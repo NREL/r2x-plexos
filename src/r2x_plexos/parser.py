@@ -288,6 +288,7 @@ class PLEXOSParser(BaseParser):
         from r2x_plexos.models.collection_property import CollectionProperties
 
         def to_snake_case(name: str) -> str:
+            """Quick fix to snakecase."""
             import re
 
             name = name.replace(" ", "_")

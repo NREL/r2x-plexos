@@ -565,6 +565,34 @@ class PLEXOSParser(BaseParser):
             logger.trace(f"Attaching time series to {ref.component_name}.{ref.field_name}")
             self.system.add_time_series(field_ts, component, **features)
 
+            # Update property value to max of time series
+            max_value = float(max(ts.data))
+            if hasattr(component, ref.field_name):
+                from r2x_plexos.models.base import PLEXOSRow
+
+                prop_value = component.get_property_value(ref.field_name)
+                if isinstance(prop_value, PLEXOSPropertyValue):
+                    for key, entry in list(prop_value.entries.items()):
+                        prop_value.entries[key] = PLEXOSRow(
+                            value=max_value,
+                            units=entry.units,
+                            action=entry.action,
+                            scenario_name=entry.scenario_name,
+                            band=entry.band,
+                            timeslice_name=entry.timeslice_name,
+                            date_from=entry.date_from,
+                            date_to=entry.date_to,
+                            datafile_name=entry.datafile_name,
+                            datafile_id=entry.datafile_id,
+                            column_name=entry.column_name,
+                            variable_name=entry.variable_name,
+                            variable_id=entry.variable_id,
+                            text=entry.text,
+                        )
+                else:
+                    # Property doesn't have a PLEXOSPropertyValue, set the attribute directly
+                    setattr(component, ref.field_name, max_value)
+
     def _attach_datafile_component_timeseries(
         self,
         ref: TimeSeriesReference,

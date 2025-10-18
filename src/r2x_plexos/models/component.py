@@ -40,33 +40,9 @@ class PLEXOSObject(Component):
         # Access model_fields from the class (not instance) to avoid deprecation warning
         cls = type(self)
         if name in cls.model_fields and isinstance(value, PLEXOSPropertyValue):
-            # Check if auto-resolution may hide complex data
-            if value.has_complex_data():
-                resolved = value.get_value()
-
-                # Build warning message showing what's being hidden
-                hidden_data = []
-                if value.get_filepath():
-                    hidden_data.append(f"filepath='{value.get_filepath()}'")
-                df_ref = value.get_datafile_reference()
-                if df_ref:
-                    hidden_data.append(f"datafile='{df_ref['name']}'")
-                var_ref = value.get_variable_reference()
-                if var_ref:
-                    hidden_data.append(f"variable='{var_ref['name']}'")
-                if value.has_scenarios():
-                    scenarios = value.get_scenarios()
-                    hidden_data.append(f"scenarios={list(scenarios)}")
-                if len(value.entries) > 1:
-                    hidden_data.append(f"{len(value.entries)} entries (bands/timeslices/dates)")
-
-                if hidden_data:
-                    logger.warning(
-                        f"Accessing {cls.__name__}.{name} returns value={resolved!r}, "
-                        f"but property has complex data: {', '.join(hidden_data)}. "
-                        f"Use get_property_value('{name}') to access full PropertyValue object."
-                    )
-
+            # Auto-resolve PropertyValue to its simple value
+            # Note: This hides complex data (filepath, datafile refs, variable refs, etc.)
+            # Use get_property_value(field_name) to access the full PropertyValue object
             return value.get_value()
 
         return value

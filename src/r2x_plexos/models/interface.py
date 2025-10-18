@@ -245,6 +245,7 @@ class PLEXOSInterface(PLEXOSObject):
     ] = 0
     units: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Units",
             description="Flag if interface is in service",

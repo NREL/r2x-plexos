@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import total_ordering
-from typing import Any
+from typing import Any, cast
 
 from plexosdb import ClassEnum
 
@@ -13,8 +13,8 @@ from .context import get_horizon, get_scenario_priority
 # Constants
 DEFAULT_BAND = 1
 MAX_REPR_VALUES = 5
-PRIORITY_NO_SCENARIO = 0  # Lowest priority (no scenario assigned)
-PRIORITY_UNKNOWN_SCENARIO = 0
+PRIORITY_NO_SCENARIO = 0  # Entries with no scenario (base case) have priority 0
+PRIORITY_UNKNOWN_SCENARIO = -1  # Unknown scenarios have lowest priority
 
 
 @total_ordering
@@ -81,7 +81,7 @@ class PLEXOSPropertyValue:
                 csv_in_text = possible_text
             prop.add_entry(
                 value=record.get("value"),
-                scenario=record.get("scenario"),
+                scenario=record.get("scenario_name") or record.get("scenario"),
                 band=record.get("band", DEFAULT_BAND),
                 timeslice=record.get("timeslice") or record.get("time_slice"),
                 date_from=record.get("date_from"),
@@ -468,13 +468,21 @@ class PLEXOSPropertyValue:
         """Less than comparison."""
         return self._compare(other, lambda x, y: x < y)
 
+    def __le__(self, other: Any) -> bool:
+        """Less than or equal comparison."""
+        return self._compare(other, lambda x, y: x <= y)
+
     def __eq__(self, other: Any) -> bool:
         """Equal comparison."""
         return self._compare(other, lambda x, y: x == y)
 
     def __ge__(self, other: Any) -> bool:
-        """Equal comparison."""
+        """Greater than or equal comparison."""
         return self._compare(other, lambda x, y: x >= y)
+
+    def __gt__(self, other: Any) -> bool:
+        """Greater than comparison."""
+        return self._compare(other, lambda x, y: x > y)
 
     def _compare(self, other: Any, op: Callable[[Any, Any], bool]) -> bool:
         """Compare this property with another value."""
@@ -551,12 +559,109 @@ class PLEXOSPropertyValue:
 
     def _resolve_by_priority(self, priority: dict[str, int]) -> Any:
         """Resolve value using scenario priority (higher number = higher priority, following PLEXOS convention)."""
-        # Look for entries, preferring simple values (band 1, no timeslice, no dates)
-        # but also considering entries with timeslices/dates if no simple values exist
+        return self._resolve_field_by_priority(priority, field="value")
+
+    def get_entry(self) -> PLEXOSRow | None:
+        """Get property entry with automatic scenario priority resolution.
+
+        Similar to get_value() but returns the full PLEXOSRow entry instead of just the value.
+        This is useful when you need to access other fields from the entry like variable_name,
+        variable_id, action, etc.
+
+        Returns
+        -------
+        PLEXOSRow | None
+            The highest-priority entry or None if no entries exist
+        """
+        if not self.entries:
+            return None
+
+        priority = get_scenario_priority()
+        if priority:
+            return self._resolve_entry_by_priority(priority)
+
+        # Without priority context, return first entry
+        return next(iter(self.entries.values()))
+
+    def _resolve_entry_by_priority(self, priority: dict[str, int]) -> PLEXOSRow | None:
+        """Resolve entry using scenario priority (higher number = higher priority).
+
+        Parameters
+        ----------
+        priority : dict[str, int]
+            Scenario priority map (higher number = higher priority)
+
+        Returns
+        -------
+        PLEXOSRow | None
+            The entry from the highest priority scenario or None
+        """
+        simple_candidates: list[tuple[str | None, PLEXOSRow, float]] = []
+        complex_candidates: list[tuple[str | None, PLEXOSRow, float]] = []
+
+        for key, row in self.entries.items():
+            # Assign priority based on scenario
+            prio: float
+            if key.scenario is None:
+                prio = float(PRIORITY_NO_SCENARIO)
+            elif key.scenario in priority:
+                prio = float(priority[key.scenario])
+            else:
+                # Skip entries from scenarios not in the priority map
+                continue
+
+            # Categorize as simple or complex
+            is_simple = (
+                key.band == DEFAULT_BAND
+                and key.timeslice is None
+                and key.date_from is None
+                and key.date_to is None
+            )
+
+            if is_simple:
+                simple_candidates.append((key.scenario, row, prio))
+            else:
+                complex_candidates.append((key.scenario, row, prio))
+
+        # Prefer simple candidates if they exist, otherwise use complex
+        candidates = simple_candidates if simple_candidates else complex_candidates
+
+        if not candidates:
+            # Fallback: try to get first entry
+            if self.entries:
+                return next(iter(self.entries.values()))
+            return None
+
+        # Sort descending: highest priority value wins (PLEXOS convention)
+        candidates.sort(key=lambda x: x[2], reverse=True)
+        return candidates[0][1]
+
+    def _resolve_field_by_priority(self, priority: dict[str, int], field: str = "value") -> Any:
+        """Resolve any field using scenario priority.
+
+        Parameters
+        ----------
+        priority : dict[str, int]
+            Scenario priority map (higher number = higher priority)
+        field : str
+            Field name to extract from PLEXOSRow ('value', 'text', 'variable_name', etc.)
+
+        Returns
+        -------
+        Any
+            The field value from the highest priority entry
+        """
         simple_candidates: list[tuple[str | None, Any, float]] = []
         complex_candidates: list[tuple[str | None, Any, float]] = []
 
         for key, row in self.entries.items():
+            # Get the field value from the row
+            field_value = getattr(row, field, None)
+
+            # Skip entries without the requested field
+            if field_value is None:
+                continue
+
             # Assign priority based on scenario
             prio: float
             if key.scenario is None:
@@ -575,19 +680,83 @@ class PLEXOSPropertyValue:
             )
 
             if is_simple:
-                simple_candidates.append((key.scenario, row.value, prio))
+                simple_candidates.append((key.scenario, field_value, prio))
             else:
-                complex_candidates.append((key.scenario, row.value, prio))
+                complex_candidates.append((key.scenario, field_value, prio))
 
         # Prefer simple candidates if they exist, otherwise use complex
         candidates = simple_candidates if simple_candidates else complex_candidates
 
         if not candidates:
-            return self.get_value_for()
+            # Fallback: try to get first entry with the field
+            for row in self.entries.values():
+                field_value = getattr(row, field, None)
+                if field_value is not None:
+                    return field_value
+            return None
 
         # Sort descending: highest priority value wins (PLEXOS convention)
         candidates.sort(key=lambda x: x[2], reverse=True)
         return candidates[0][1]
+
+    def get_text_with_priority(self) -> str | None:
+        """Get text field using scenario priority resolution.
+
+        When multiple entries have the same priority (e.g., all with no scenario),
+        returns the first non-None text value found.
+
+        Returns
+        -------
+        str | None
+            Text from highest priority entry, or None if no text exists
+        """
+        from r2x_plexos.models.context import get_scenario_priority
+
+        priority = get_scenario_priority()
+        if priority:
+            result = self._resolve_field_by_priority(priority, field="text")
+            if result:
+                return cast(str, result)
+
+        # Fallback: return first non-None text found
+        # When all entries have same priority, just return first one
+        for row in self.entries.values():
+            if row.text:
+                return row.text
+        return None
+
+    def get_variable_with_priority(self) -> dict[str, Any] | None:
+        """Get variable reference using scenario priority resolution.
+
+        Returns
+        -------
+        dict | None
+            Dictionary with 'name', 'id', 'action' from highest priority entry
+        """
+        from r2x_plexos.models.context import get_scenario_priority
+
+        priority = get_scenario_priority()
+        if priority:
+            var_name = self._resolve_field_by_priority(priority, field="variable_name")
+            if var_name:
+                # Find the entry with this variable name to get full details
+                for row in self.entries.values():
+                    if row.variable_name == var_name:
+                        return {
+                            "name": row.variable_name,
+                            "id": row.variable_id,
+                            "action": row.action,
+                        }
+
+        # Fallback: return first variable found
+        for row in self.entries.values():
+            if row.variable_name:
+                return {
+                    "name": row.variable_name,
+                    "id": row.variable_id,
+                    "action": row.action,
+                }
+        return None
 
     def _save_indexes(self) -> dict[str, Any]:
         """Save current indexes for restoration."""

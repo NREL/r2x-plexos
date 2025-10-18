@@ -14,7 +14,7 @@ class PLEXOSVariable(PLEXOSObject):
     profile: Annotated[
         float | int | None,
         PLEXOSProperty,
-        Field(description="Sample profile of variable values"),
+        Field(alias="Profile", description="Sample profile of variable values"),
     ] = None
     sampling_method: Annotated[
         int,
@@ -259,6 +259,7 @@ class PLEXOSVariable(PLEXOSObject):
     ] = 0
     min_value: Annotated[
         float | int,
+        PLEXOSProperty,
         Field(
             alias="Min Value",
             description="Minimum allowed sample value",

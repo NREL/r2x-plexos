@@ -906,6 +906,7 @@ class PLEXOSRegion(PLEXOSTopology):
     ] = -1
     units: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Units",
             description="Flag if the Region is included in the simulation.",
@@ -914,6 +915,7 @@ class PLEXOSRegion(PLEXOSTopology):
     ] = 1
     unserved_energy_method: Annotated[
         int,
+        PLEXOSProperty(is_enum=True),
         Field(
             alias="Unserved Energy Method",
             description="Unserved Energy Method to be used for the region",

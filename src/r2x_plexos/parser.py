@@ -560,6 +560,8 @@ class PLEXOSParser(BaseParser):
             component_map = self._parsed_files_cache[file_path]
             if component_name in component_map:
                 return component_map[component_name]
+            elif len(component_map) == 1:
+                return next(iter(component_map.values()))
             else:
                 raise ValueError(f"Component {component_name} not found in cached file {file_path}")
 

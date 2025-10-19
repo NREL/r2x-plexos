@@ -799,6 +799,77 @@ class PLEXOSParser(BaseParser):
             for key, entry in list(property_value.entries.items()):
                 property_value.entries[key] = self._create_plexos_row(max_value, entry)
 
+    def _attach_band_timeseries(
+        self,
+        component: PLEXOSObject,
+        ref: TimeSeriesReference,
+        band_num: int,
+        ts: SingleTimeSeries,
+        horizon: tuple[str, str] | None,
+    ) -> float:
+        """Attach a single band time series to component and return max value."""
+        field_ts = SingleTimeSeries.from_array(
+            data=ts.data,
+            name=ref.field_name,
+            initial_timestamp=ts.initial_timestamp,
+            resolution=ts.resolution,
+        )
+
+        features: dict[str, Any] = {"band": band_num}
+        if horizon:
+            features["horizon"] = horizon
+
+        logger.debug(f"Attaching band {band_num} time series to {ref.component_name}.{ref.field_name}")
+        self.system.add_time_series(field_ts, component, **features)
+
+        return float(max(ts.data))
+
+    def _handle_constant_variable(
+        self,
+        ref: TimeSeriesReference,
+        component: PLEXOSObject,
+        variable_name: str,
+        variable_value: float,
+        cache_key: tuple[UUID, str],
+    ) -> None:
+        """Handle variables without datafiles (constant values)."""
+        logger.info(
+            f"Applying constant variable '{variable_name}' ({variable_value}) to {ref.component_name}.{ref.field_name}"
+        )
+
+        if ref.is_collection_property:
+            coll_props_list = self.system.get_supplemental_attributes_with_component(
+                component, CollectionProperties
+            )
+
+            target_coll_props = None
+            for cp in coll_props_list:
+                if cp.membership.membership_id == ref.membership_id:
+                    target_coll_props = cp
+                    break
+
+            if not target_coll_props:
+                logger.warning(f"Collection properties not found for membership {ref.membership_id}")
+                self._attached_timeseries[cache_key] = True
+                return
+
+            if ref.field_name not in target_coll_props.properties:
+                logger.warning(f"Property {ref.field_name} not found in collection properties")
+                self._attached_timeseries[cache_key] = True
+                return
+
+            property_value = target_coll_props.properties[ref.field_name]
+            for key, entry in list(property_value.entries.items()):
+                property_value.entries[key] = self._create_plexos_row(variable_value, entry)
+        else:
+            if hasattr(component, ref.field_name):
+                prop_value = component.get_property_value(ref.field_name)
+                if isinstance(prop_value, PLEXOSPropertyValue):
+                    for key, entry in list(prop_value.entries.items()):
+                        prop_value.entries[key] = self._create_plexos_row(variable_value, entry)
+
+        self._attached_timeseries[cache_key] = True
+
     def _attach_variable_timeseries(
         self,
         ref: TimeSeriesReference,
@@ -814,9 +885,6 @@ class PLEXOSParser(BaseParser):
         component = self.system.get_component_by_uuid(ref.component_uuid)
         if not component:
             raise ValueError(f"Component {ref.component_name} not found")
-
-        # Get the variable component
-        from r2x_plexos.models.variable import PLEXOSVariable
 
         variable_name = ref.variable_name
         if not variable_name:
@@ -841,89 +909,27 @@ class PLEXOSParser(BaseParser):
                 logger.debug(f"Variable '{variable_name}' profile has no datafile and no constant value")
                 return
 
-            logger.info(
-                f"Applying constant variable '{variable_name}' ({variable_value}) to {ref.component_name}.{ref.field_name}"
-            )
-
-            if ref.is_collection_property:
-                coll_props_list = self.system.get_supplemental_attributes_with_component(
-                    component, CollectionProperties
-                )
-
-                target_coll_props = None
-                for cp in coll_props_list:
-                    if cp.membership.membership_id == ref.membership_id:
-                        target_coll_props = cp
-                        break
-
-                if not target_coll_props:
-                    logger.warning(f"Collection properties not found for membership {ref.membership_id}")
-                    self._attached_timeseries[cache_key] = True
-                    return
-
-                if ref.field_name not in target_coll_props.properties:
-                    logger.warning(f"Property {ref.field_name} not found in collection properties")
-                    self._attached_timeseries[cache_key] = True
-                    return
-
-                property_value = target_coll_props.properties[ref.field_name]
-
-                for key, entry in list(property_value.entries.items()):
-                    property_value.entries[key] = self._create_plexos_row(variable_value, entry)
-            else:
-                if hasattr(component, ref.field_name):
-                    prop_value = component.get_property_value(ref.field_name)
-                    if isinstance(prop_value, PLEXOSPropertyValue):
-                        for key, entry in list(prop_value.entries.items()):
-                            prop_value.entries[key] = PLEXOSRow(
-                                value=variable_value,
-                                units=entry.units,
-                                action=entry.action,
-                                scenario_name=entry.scenario_name,
-                                band=entry.band,
-                                timeslice_name=entry.timeslice_name,
-                                date_from=entry.date_from,
-                                date_to=entry.date_to,
-                                datafile_name=entry.datafile_name,
-                                datafile_id=entry.datafile_id,
-                                variable_name=entry.variable_name,
-                                variable_id=entry.variable_id,
-                                text=entry.text,
-                            )
-
-            self._attached_timeseries[cache_key] = True
+            self._handle_constant_variable(ref, component, variable_name, variable_value, cache_key)
             return
 
         if not bands:
-            # Check if this is a constant variable multiplier case
             variable_constant_value = profile_prop.get_value()
 
-            logger.warning(
-                f"DEBUG: Variable '{variable_name}' has no bands, constant value={variable_constant_value}, type={type(variable_constant_value)}, is None? {variable_constant_value is None}, is zero? {variable_constant_value == 0 if variable_constant_value is not None else 'N/A'}"
-            )
-
             if variable_constant_value is not None and variable_constant_value != 0:
-                logger.warning(
+                logger.debug(
                     f"Variable '{variable_name}' has constant value {variable_constant_value}, applying to datafile values"
                 )
 
                 datafile_component_name = first_entry.datafile_name
                 file_path = None
 
-                logger.warning(f"DEBUG: Looking for datafile component: {datafile_component_name}")
-
                 datafile_component = self.system.get_component(PLEXOSDatafile, datafile_component_name)
                 if datafile_component:
-                    logger.warning(f"DEBUG: Found datafile component: {datafile_component.name}")
                     filename_prop = datafile_component.get_property_value("filename")
                     if filename_prop:
                         file_path_str = filename_prop.get_text_with_priority()
-                        logger.warning(f"DEBUG: Datafile filename property: {file_path_str}")
                         if file_path_str and isinstance(file_path_str, str):
                             file_path = self._resolve_datafile_path(file_path_str)
-                            logger.warning(f"DEBUG: Resolved file path: {file_path}")
-                else:
-                    logger.warning(f"DEBUG: Datafile component '{datafile_component_name}' not found")
 
                 if file_path is None:
                     logger.debug(f"Trying as direct path: {datafile_component_name}")
@@ -969,9 +975,9 @@ class PLEXOSParser(BaseParser):
         action = None
 
         if isinstance(property_value, PLEXOSPropertyValue):
-            entry = property_value.get_entry()
-            if entry:
-                action = entry.action
+            prop_entry = property_value.get_entry()
+            if prop_entry:
+                action = prop_entry.action
 
         initial_time = datetime(reference_year, 1, 1)
 
@@ -993,7 +999,6 @@ class PLEXOSParser(BaseParser):
                 logger.warning(f"File not found for band {band_num}: {band_file_path}")
                 continue
 
-            # Parse the file
             if str(band_file_path) in self._parsed_files_cache:
                 ts_map = self._parsed_files_cache[str(band_file_path)]
             else:
@@ -1005,7 +1010,6 @@ class PLEXOSParser(BaseParser):
                 )
                 self._parsed_files_cache[str(band_file_path)] = ts_map
 
-            # Look for the component name in the parsed time series
             if ref.component_name not in ts_map:
                 logger.debug(
                     f"Component '{ref.component_name}' not found in band {band_num} file {band_file_path}"
@@ -1019,23 +1023,8 @@ class PLEXOSParser(BaseParser):
                 if base_value and base_value != 0:
                     ts = self._apply_action_to_timeseries(ts, action, base_value)
 
-            field_ts = SingleTimeSeries.from_array(
-                data=ts.data,
-                name=ref.field_name,
-                initial_timestamp=ts.initial_timestamp,
-                resolution=ts.resolution,
-            )
-
-            features: dict[str, Any] = {"band": band_num}
-            if horizon:
-                features["horizon"] = horizon
-
-            logger.debug(
-                f"Attaching variable band {band_num} time series to {ref.component_name}.{ref.field_name}"
-            )
-            self.system.add_time_series(field_ts, component, **features)
-
-            all_max_values.append(float(max(ts.data)))
+            max_value = self._attach_band_timeseries(component, ref, band_num, ts, horizon)
+            all_max_values.append(max_value)
 
         if all_max_values:
             global_max = max(all_max_values)
@@ -1121,23 +1110,8 @@ class PLEXOSParser(BaseParser):
                 if action and variable_value is not None:
                     ts = self._apply_action_to_timeseries(ts, action, variable_value)
 
-                field_ts = SingleTimeSeries.from_array(
-                    data=ts.data,
-                    name=ref.field_name,
-                    initial_timestamp=ts.initial_timestamp,
-                    resolution=ts.resolution,
-                )
-
-                features: dict[str, Any] = {"band": band_num}
-                if horizon:
-                    features["horizon"] = horizon
-
-                logger.trace(
-                    f"Attaching band {band_num} time series to {ref.component_name}.{ref.field_name}"
-                )
-                self.system.add_time_series(field_ts, component, **features)
-
-                all_max_values.append(float(max(ts.data)))
+                max_value = self._attach_band_timeseries(component, ref, band_num, ts, horizon)
+                all_max_values.append(max_value)
 
             if all_max_values:
                 global_max = max(all_max_values)

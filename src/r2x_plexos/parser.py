@@ -894,43 +894,192 @@ class PLEXOSParser(BaseParser):
         # Check if the variable has multiple bands
         bands = sorted({entry.band for entry in profile_prop.entries.values() if entry.band})
 
-        if not bands:
-            logger.debug(f"Variable '{variable_name}' has no bands")
-            return
-
         # Get the datafile from one of the entries (they all point to the same file)
         first_entry = next(iter(profile_prop.entries.values()))
         if not first_entry.datafile_name:
-            logger.debug(f"Variable '{variable_name}' profile has no datafile")
-            return
+            # Variable has no datafile - check if it has a constant value
+            variable_value = profile_prop.get_value()
 
-        file_path = self._resolve_datafile_path(first_entry.datafile_name)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+            if variable_value is None:
+                logger.debug(f"Variable '{variable_name}' profile has no datafile and no constant value")
+                return
 
-        # Parse the file to get all time series
-        initial_time = datetime(reference_year, 1, 1)
-        from r2x_plexos.datafile_handler import extract_all_time_series
-
-        if str(file_path) in self._parsed_files_cache:
-            ts_map = self._parsed_files_cache[str(file_path)]
-        else:
-            ts_map = extract_all_time_series(
-                path=str(file_path),
-                default_initial_time=initial_time,
-                year=reference_year,
-                timeslices=timeslices,
+            # Apply the constant variable value to the property
+            logger.info(
+                f"Applying constant variable '{variable_name}' ({variable_value}) to {ref.component_name}.{ref.field_name}"
             )
-            self._parsed_files_cache[str(file_path)] = ts_map
 
-        # Look for band time series
-        band_ts_keys = [key for key in ts_map if key.startswith(f"{variable_name}_band_")]
+            # Handle collection properties vs regular properties
+            if ref.is_collection_property:
+                # Update collection property
+                from r2x_plexos.models.base import PLEXOSRow
+                from r2x_plexos.models.collection_property import CollectionProperties
 
-        if not band_ts_keys:
-            logger.warning(f"No band time series found for variable '{variable_name}' in {file_path}")
+                coll_props_list = self.system.get_supplemental_attributes_with_component(
+                    component, CollectionProperties
+                )
+
+                target_coll_props = None
+                for cp in coll_props_list:
+                    if cp.membership.membership_id == ref.membership_id:
+                        target_coll_props = cp
+                        break
+
+                if not target_coll_props:
+                    logger.warning(f"Collection properties not found for membership {ref.membership_id}")
+                    self._attached_timeseries[cache_key] = True
+                    return
+
+                if ref.field_name not in target_coll_props.properties:
+                    logger.warning(f"Property {ref.field_name} not found in collection properties")
+                    self._attached_timeseries[cache_key] = True
+                    return
+
+                property_value = target_coll_props.properties[ref.field_name]
+
+                # Update the property value entries
+                for key, entry in list(property_value.entries.items()):
+                    property_value.entries[key] = PLEXOSRow(
+                        value=variable_value,
+                        units=entry.units,
+                        action=entry.action,
+                        scenario_name=entry.scenario_name,
+                        band=entry.band,
+                        timeslice_name=entry.timeslice_name,
+                        date_from=entry.date_from,
+                        date_to=entry.date_to,
+                        datafile_name=entry.datafile_name,
+                        datafile_id=entry.datafile_id,
+                        column_name=entry.column_name,
+                        variable_name=entry.variable_name,
+                        variable_id=entry.variable_id,
+                        text=entry.text,
+                    )
+            else:
+                # Update regular component property
+                if hasattr(component, ref.field_name):
+                    from r2x_plexos.models.base import PLEXOSRow
+
+                    prop_value = component.get_property_value(ref.field_name)
+                    if isinstance(prop_value, PLEXOSPropertyValue):
+                        for key, entry in list(prop_value.entries.items()):
+                            prop_value.entries[key] = PLEXOSRow(
+                                value=variable_value,
+                                units=entry.units,
+                                action=entry.action,
+                                scenario_name=entry.scenario_name,
+                                band=entry.band,
+                                timeslice_name=entry.timeslice_name,
+                                date_from=entry.date_from,
+                                date_to=entry.date_to,
+                                datafile_name=entry.datafile_name,
+                                datafile_id=entry.datafile_id,
+                                variable_name=entry.variable_name,
+                                variable_id=entry.variable_id,
+                                text=entry.text,
+                            )
+
+            self._attached_timeseries[cache_key] = True
             return
 
-        logger.debug(f"Found {len(band_ts_keys)} band time series for variable '{variable_name}'")
+        if not bands:
+            # Check if this is a constant variable multiplier case
+            variable_constant_value = profile_prop.get_value()
+
+            logger.warning(
+                f"DEBUG: Variable '{variable_name}' has no bands, constant value={variable_constant_value}, type={type(variable_constant_value)}, is None? {variable_constant_value is None}, is zero? {variable_constant_value == 0 if variable_constant_value is not None else 'N/A'}"
+            )
+
+            if variable_constant_value is not None and variable_constant_value != 0:
+                # This is a constant multiplier - apply it to the datafile base value
+                logger.warning(
+                    f"Variable '{variable_name}' has constant value {variable_constant_value}, applying to datafile values"
+                )
+
+                # Resolve datafile name to actual file path
+                # The datafile_name could be a component name or direct path
+                from r2x_plexos.models.datafile import PLEXOSDatafile
+
+                datafile_component_name = first_entry.datafile_name
+                file_path = None
+
+                logger.warning(f"DEBUG: Looking for datafile component: {datafile_component_name}")
+
+                # Try to get it as a datafile component first
+                datafile_component = self.system.get_component(PLEXOSDatafile, datafile_component_name)
+                if datafile_component:
+                    logger.warning(f"DEBUG: Found datafile component: {datafile_component.name}")
+                    filename_prop = datafile_component.get_property_value("filename")
+                    if filename_prop:
+                        file_path_str = filename_prop.get_text_with_priority()
+                        logger.warning(f"DEBUG: Datafile filename property: {file_path_str}")
+                        if file_path_str and isinstance(file_path_str, str):
+                            file_path = self._resolve_datafile_path(file_path_str)
+                            logger.warning(f"DEBUG: Resolved file path: {file_path}")
+                else:
+                    logger.warning(f"DEBUG: Datafile component '{datafile_component_name}' not found")
+
+                # If not found as component, try as direct path
+                if file_path is None:
+                    logger.debug(f"Trying as direct path: {datafile_component_name}")
+                    file_path = self._resolve_datafile_path(datafile_component_name)
+
+                if not file_path.exists():
+                    raise FileNotFoundError(f"File not found: {file_path}")
+
+                # Read the base value from the datafile for this component
+                from r2x_plexos.datafile_handler import extract_one_time_series
+
+                try:
+                    ts = extract_one_time_series(
+                        path=str(file_path),
+                        component=ref.component_name,
+                        default_initial_time=datetime(reference_year, 1, 1),
+                        year=reference_year,
+                    )
+
+                    # Calculate base_value  variable_constant
+                    base_value = ts.data[0] if len(set(ts.data)) == 1 else max(ts.data)
+                    result_value = base_value * variable_constant_value
+
+                    logger.info(
+                        f"Applying variable '{variable_name}' ({variable_constant_value}) to {ref.component_name}.{ref.field_name}: {base_value} x {variable_constant_value} = {result_value}"
+                    )
+
+                    # Update the component's property value
+                    if hasattr(component, ref.field_name):
+                        from r2x_plexos.models.base import PLEXOSRow
+
+                        prop_value = component.get_property_value(ref.field_name)
+                        if isinstance(prop_value, PLEXOSPropertyValue):
+                            for key, entry in list(prop_value.entries.items()):
+                                prop_value.entries[key] = PLEXOSRow(
+                                    value=result_value,
+                                    units=entry.units,
+                                    action=entry.action,
+                                    scenario_name=entry.scenario_name,
+                                    band=entry.band,
+                                    timeslice_name=entry.timeslice_name,
+                                    date_from=entry.date_from,
+                                    date_to=entry.date_to,
+                                    datafile_name=entry.datafile_name,
+                                    datafile_id=entry.datafile_id,
+                                    variable_name=entry.variable_name,
+                                    variable_id=entry.variable_id,
+                                    text=entry.text,
+                                )
+
+                    self._attached_timeseries[cache_key] = True
+                    return
+
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to apply constant variable '{variable_name}' to {ref.component_name}.{ref.field_name}: {e}"
+                    )
+                    return
+            else:
+                logger.debug(f"Variable '{variable_name}' has no bands")
+                return
 
         # Get the property value and action
         property_value = component.get_property_value(ref.field_name)
@@ -941,29 +1090,56 @@ class PLEXOSParser(BaseParser):
             if entry:
                 action = entry.action
 
+        # Iterate through each band to get its specific datafile
+        initial_time = datetime(reference_year, 1, 1)
+        from r2x_plexos.datafile_handler import extract_all_time_series
+
         all_max_values = []
 
-        for band_key in sorted(band_ts_keys):
-            # Extract band number
-            band_num = int(band_key.split("_band_")[-1])
-            ts = ts_map[band_key]
+        for band_num in bands:
+            # Get the entry for this specific band (with scenario resolution)
+            band_entry = None
+            for entry in profile_prop.entries.values():
+                if entry.band == band_num:
+                    band_entry = entry
+                    break
+
+            if not band_entry or not band_entry.datafile_name:
+                logger.debug(f"Variable '{variable_name}' band {band_num} has no datafile")
+                continue
+
+            # Resolve and parse this band's datafile
+            band_file_path = self._resolve_datafile_path(band_entry.datafile_name)
+            if not band_file_path.exists():
+                logger.warning(f"File not found for band {band_num}: {band_file_path}")
+                continue
+
+            # Parse the file
+            if str(band_file_path) in self._parsed_files_cache:
+                ts_map = self._parsed_files_cache[str(band_file_path)]
+            else:
+                ts_map = extract_all_time_series(
+                    path=str(band_file_path),
+                    default_initial_time=initial_time,
+                    year=reference_year,
+                    timeslices=timeslices,
+                )
+                self._parsed_files_cache[str(band_file_path)] = ts_map
+
+            # Look for the component name in the parsed time series
+            if ref.component_name not in ts_map:
+                logger.debug(
+                    f"Component '{ref.component_name}' not found in band {band_num} file {band_file_path}"
+                )
+                continue
+
+            ts = ts_map[ref.component_name]
 
             # Apply action if needed (e.g., multiply by property value)
             if action:
-                # For variables, we need to get the band-specific profile value
-                band_entry = None
-                for entry in profile_prop.entries.values():
-                    if entry.band == band_num:
-                        band_entry = entry
-                        break
-
-                if band_entry and isinstance(property_value, PLEXOSPropertyValue):
-                    # The profile value is what we multiply/divide/etc. by
-                    # For this case, the variable profile is the time series itself
-                    # and the action is applied to it with the property's base value
-                    base_value = property_value.get_value()
-                    if base_value and base_value != 0:
-                        ts = self._apply_action_to_timeseries(ts, action, base_value)
+                base_value = property_value.get_value()
+                if base_value and base_value != 0:
+                    ts = self._apply_action_to_timeseries(ts, action, base_value)
 
             # Create time series with property name (band in features)
             field_ts = SingleTimeSeries.from_array(
@@ -989,7 +1165,7 @@ class PLEXOSParser(BaseParser):
         # Update property value to maximum across all bands
         if all_max_values:
             global_max = max(all_max_values)
-            logger.debug(f"Global max across {len(band_ts_keys)} variable bands: {global_max}")
+            logger.debug(f"Global max across {len(all_max_values)} variable bands: {global_max}")
 
             if hasattr(component, ref.field_name):
                 from r2x_plexos.models.base import PLEXOSRow

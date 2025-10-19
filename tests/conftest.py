@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from loguru import logger
 
 from r2x_plexos.models.context import set_horizon, set_scenario_priority
 
@@ -8,20 +9,20 @@ DATA_FOLDER = "tests/data"
 SIMPLE_XML = "5_bus_system_variables.xml"
 
 
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
-    config.addinivalue_line("markers", "fast: marks tests as fast (select with '-m fast')")
+@pytest.fixture
+def caplog(caplog):
+    logger.enable("r2x_plexos")
+    handler_id = logger.add(caplog.handler, format="{message}")
+    yield caplog
+    logger.remove(handler_id)
 
 
 @pytest.fixture(autouse=True)
 def reset_global_context():
     """Reset global scenario priority and horizon context between tests."""
-    # Clear before test
     set_scenario_priority(None)
     set_horizon(None)
     yield
-    # Clear after test
     set_scenario_priority(None)
     set_horizon(None)
 

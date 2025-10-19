@@ -1,7 +1,6 @@
 """PLEXOS parser implementation for r2x-core framework."""
 
 import itertools
-import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,12 +29,12 @@ from .models import (
     get_horizon,
     set_scenario_priority,
 )
-from .models.base import PLEXOSRow
 from .models.collection_property import CollectionProperties
 from .models.timeslice import PLEXOSTimeslice
 from .models.utils import get_field_name_by_alias
 from .models.variable import PLEXOSVariable
 from .utils_mappings import PLEXOS_TYPE_MAP
+from .utils_parser import apply_action_to_timeseries, create_plexos_row, to_snake_case
 from .utils_plexosdb import get_collection_enum, get_collection_name
 
 __version__ = version("r2x_plexos")
@@ -326,7 +325,7 @@ class PLEXOSParser(BaseParser):
 
                 property_values: dict[str, PLEXOSPropertyValue] = {}
                 for property_name, prop_rows in properties_by_name.items():
-                    field_name = self._to_snake_case(property_name)
+                    field_name = to_snake_case(property_name)
                     property_value = PLEXOSPropertyValue.from_records(prop_rows)
                     property_values[field_name] = property_value
 
@@ -516,15 +515,10 @@ class PLEXOSParser(BaseParser):
             raise ValueError("No datafile path provided")
 
         normalized_path = datafile_path.replace("\\", "/")
-
         base_path = Path(self.data_store.folder)
         if self.config.timeseries_dir:
             base_path = base_path / self.config.timeseries_dir
-
-        full_path = base_path / normalized_path
-
-        logger.trace(f"Resolved datafile path: {datafile_path} -> {full_path}")
-        return full_path
+        return base_path / normalized_path
 
     def _get_variable_profile_value(self, variable_id: int, variable_name: str) -> float:
         """Get the profile value from a variable component using scenario priority.
@@ -552,71 +546,6 @@ class PLEXOSParser(BaseParser):
                 return float(entry.value)
 
         raise ValueError(f"Variable {variable_name} has no profile value in any entry")
-
-    def _apply_action_to_timeseries(
-        self, ts: SingleTimeSeries, action: str, value: float
-    ) -> SingleTimeSeries:
-        """Apply an action operator to a time series."""
-        action_map = {"\u00d7": "*", "x": "*", "*": "*", "+": "+", "-": "-", "/": "/", "=": "="}
-        normalized_action = action_map.get(action, action)
-
-        if normalized_action not in action_map.values():
-            raise ValueError(f"Unsupported action: {action}")
-
-        if normalized_action == "=" or normalized_action is None:
-            return ts
-
-        if normalized_action == "*":
-            new_data = [x * value for x in ts.data]
-        elif normalized_action == "+":
-            new_data = [x + value for x in ts.data]
-        elif normalized_action == "-":
-            new_data = [x - value for x in ts.data]
-        elif normalized_action == "/":
-            if value == 0:
-                raise ValueError("Cannot divide by zero")
-            new_data = [x / value for x in ts.data]
-        else:
-            return ts
-
-        return SingleTimeSeries.from_array(new_data, ts.name, ts.initial_timestamp, ts.resolution)
-
-    def _create_plexos_row(self, value: float, template: PLEXOSRow) -> PLEXOSRow:
-        """Create a new PLEXOSRow with updated value, preserving all other fields from template."""
-        return PLEXOSRow(
-            value=value,
-            units=template.units,
-            action=template.action,
-            scenario_name=template.scenario_name,
-            band=template.band,
-            timeslice_name=template.timeslice_name,
-            date_from=template.date_from,
-            date_to=template.date_to,
-            datafile_name=template.datafile_name,
-            datafile_id=template.datafile_id,
-            column_name=template.column_name,
-            variable_name=template.variable_name,
-            variable_id=template.variable_id,
-            text=template.text,
-        )
-
-    def _update_property_to_max(self, component: PLEXOSObject, field_name: str, max_value: float) -> None:
-        """Update property value to maximum across bands/timeseries."""
-        if not hasattr(component, field_name):
-            return
-
-        prop_value = component.get_property_value(field_name)
-        if isinstance(prop_value, PLEXOSPropertyValue):
-            for key, entry in list(prop_value.entries.items()):
-                prop_value.entries[key] = self._create_plexos_row(max_value, entry)
-        else:
-            setattr(component, field_name, max_value)
-
-    def _to_snake_case(self, name: str) -> str:
-        """Convert name to snake_case."""
-        name = name.replace(" ", "_")
-        name = re.sub("([a-z0-9])([A-Z])", r"\1_\2", name)
-        return name.lower()
 
     def _get_or_parse_timeseries(
         self,
@@ -695,7 +624,7 @@ class PLEXOSParser(BaseParser):
 
                     if entry.action:
                         ts_max_before = max(ts.data)
-                        ts = self._apply_action_to_timeseries(ts, entry.action, variable_value)
+                        ts = apply_action_to_timeseries(ts, entry.action, variable_value)
                         ts_max_after = max(ts.data)
 
                         logger.debug(
@@ -729,7 +658,7 @@ class PLEXOSParser(BaseParser):
                 prop_value = component.get_property_value(ref.field_name)
                 if isinstance(prop_value, PLEXOSPropertyValue):
                     for key, entry in list(prop_value.entries.items()):
-                        prop_value.entries[key] = self._create_plexos_row(single_value, entry)
+                        prop_value.entries[key] = create_plexos_row(single_value, entry)
         else:
             field_ts = SingleTimeSeries.from_array(
                 data=ts.data,
@@ -742,7 +671,13 @@ class PLEXOSParser(BaseParser):
             self.system.add_time_series(field_ts, component, **features)
 
             max_value = float(max(ts.data))
-            self._update_property_to_max(component, ref.field_name, max_value)
+            if hasattr(component, ref.field_name):
+                prop_value = component.get_property_value(ref.field_name)
+                if isinstance(prop_value, PLEXOSPropertyValue):
+                    for key, entry in list(prop_value.entries.items()):
+                        prop_value.entries[key] = create_plexos_row(max_value, entry)
+                else:
+                    setattr(component, ref.field_name, max_value)
 
     def _attach_collection_property_timeseries(
         self,
@@ -781,7 +716,7 @@ class PLEXOSParser(BaseParser):
             )
 
             for key, entry in list(property_value.entries.items()):
-                property_value.entries[key] = self._create_plexos_row(single_value, entry)
+                property_value.entries[key] = create_plexos_row(single_value, entry)
         else:
             field_ts = SingleTimeSeries.from_array(
                 data=ts.data,
@@ -797,7 +732,7 @@ class PLEXOSParser(BaseParser):
 
             max_value = float(max(ts.data))
             for key, entry in list(property_value.entries.items()):
-                property_value.entries[key] = self._create_plexos_row(max_value, entry)
+                property_value.entries[key] = create_plexos_row(max_value, entry)
 
     def _attach_band_timeseries(
         self,
@@ -860,13 +795,13 @@ class PLEXOSParser(BaseParser):
 
             property_value = target_coll_props.properties[ref.field_name]
             for key, entry in list(property_value.entries.items()):
-                property_value.entries[key] = self._create_plexos_row(variable_value, entry)
+                property_value.entries[key] = create_plexos_row(variable_value, entry)
         else:
             if hasattr(component, ref.field_name):
                 prop_value = component.get_property_value(ref.field_name)
                 if isinstance(prop_value, PLEXOSPropertyValue):
                     for key, entry in list(prop_value.entries.items()):
-                        prop_value.entries[key] = self._create_plexos_row(variable_value, entry)
+                        prop_value.entries[key] = create_plexos_row(variable_value, entry)
 
         self._attached_timeseries[cache_key] = True
 
@@ -957,7 +892,7 @@ class PLEXOSParser(BaseParser):
                         prop_value = component.get_property_value(ref.field_name)
                         if isinstance(prop_value, PLEXOSPropertyValue):
                             for key, entry in list(prop_value.entries.items()):
-                                prop_value.entries[key] = self._create_plexos_row(result_value, entry)
+                                prop_value.entries[key] = create_plexos_row(result_value, entry)
 
                     self._attached_timeseries[cache_key] = True
                     return
@@ -1021,7 +956,7 @@ class PLEXOSParser(BaseParser):
             if action:
                 base_value = property_value.get_value()
                 if base_value and base_value != 0:
-                    ts = self._apply_action_to_timeseries(ts, action, base_value)
+                    ts = apply_action_to_timeseries(ts, action, base_value)
 
             max_value = self._attach_band_timeseries(component, ref, band_num, ts, horizon)
             all_max_values.append(max_value)
@@ -1029,7 +964,13 @@ class PLEXOSParser(BaseParser):
         if all_max_values:
             global_max = max(all_max_values)
             logger.debug(f"Global max across {len(all_max_values)} variable bands: {global_max}")
-            self._update_property_to_max(component, ref.field_name, global_max)
+            if hasattr(component, ref.field_name):
+                prop_value = component.get_property_value(ref.field_name)
+                if isinstance(prop_value, PLEXOSPropertyValue):
+                    for key, entry in list(prop_value.entries.items()):
+                        prop_value.entries[key] = create_plexos_row(global_max, entry)
+                else:
+                    setattr(component, ref.field_name, global_max)
 
         self._attached_timeseries[cache_key] = True
 
@@ -1108,7 +1049,7 @@ class PLEXOSParser(BaseParser):
                 ts = ts_map[band_key]
 
                 if action and variable_value is not None:
-                    ts = self._apply_action_to_timeseries(ts, action, variable_value)
+                    ts = apply_action_to_timeseries(ts, action, variable_value)
 
                 max_value = self._attach_band_timeseries(component, ref, band_num, ts, horizon)
                 all_max_values.append(max_value)
@@ -1116,7 +1057,13 @@ class PLEXOSParser(BaseParser):
             if all_max_values:
                 global_max = max(all_max_values)
                 logger.debug(f"Global max across {len(band_ts_keys)} bands: {global_max}")
-                self._update_property_to_max(component, ref.field_name, global_max)
+                if hasattr(component, ref.field_name):
+                    prop_value = component.get_property_value(ref.field_name)
+                    if isinstance(prop_value, PLEXOSPropertyValue):
+                        for key, entry in list(prop_value.entries.items()):
+                            prop_value.entries[key] = create_plexos_row(global_max, entry)
+                    else:
+                        setattr(component, ref.field_name, global_max)
         else:
             ts = self._get_or_parse_timeseries(
                 file_path=str(file_path),
@@ -1138,7 +1085,7 @@ class PLEXOSParser(BaseParser):
 
                     if entry.action:
                         ts_max_before = max(ts.data)
-                        ts = self._apply_action_to_timeseries(ts, entry.action, variable_value)
+                        ts = apply_action_to_timeseries(ts, entry.action, variable_value)
                         ts_max_after = max(ts.data)
 
                         logger.debug(

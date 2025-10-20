@@ -99,3 +99,34 @@ def test_variable_timeseries(xml_with_variables, tmp_path, caplog):
     ts = sys.get_time_series(generator_component)
     assert all(ts.data[:100] == 25.87)
     assert all(ts.data[-100:] == 20.95)
+
+
+# def test_battery_capacity_with_constant_variable(xml_with_variables, tmp_path, caplog):
+#     """Test generator max_capacity computed as base_value * variable_value."""
+#     config = PLEXOSConfig(model_name="Base", reference_year=2024)
+#     data_file = DataFile(name="xml_file", fpath=xml_with_variables)
+#     store = DataStore(folder=tmp_path)
+#     store.add_data_file(data_file)
+
+#     parser = PLEXOSParser(config, store)
+#     sys = parser.build_system()
+
+#     battery_component = sys.get_component(PLEXOSBattery, "TestBattery")
+#     datafile_component = sys.get_component(PLEXOSDatafile, "BatteryCapacities")
+#     variable_component = sys.get_component(PLEXOSVariable, "CapacityMultiplier")
+
+#     assert isinstance(battery_component, PLEXOSObject)
+#     assert isinstance(battery_component, PLEXOSBattery)
+
+#     max_power_property_value = battery_component.get_property_value("max_power")
+#     assert isinstance(max_power_property_value, PLEXOSPropertyValue)
+#     assert max_power_property_value.get_entry().datafile_name == datafile_component.name
+#     assert max_power_property_value.has_datafile()
+#     assert battery_component.max_power == 100.0
+
+#     capacity_property_value = battery_component.get_property_value("capacity")
+#     assert isinstance(capacity_property_value, PLEXOSPropertyValue)
+#     assert capacity_property_value.get_entry().variable_name == variable_component.name
+#     assert capacity_property_value.has_variable()
+#     assert battery_component.capacity == 100.0 * 3
+#     assert not sys.has_timeseries(battery_component)

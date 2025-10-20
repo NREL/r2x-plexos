@@ -4,13 +4,16 @@ import re
 from datetime import datetime, timedelta
 from functools import lru_cache, singledispatch
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 from infrasys import SingleTimeSeries
 
 if TYPE_CHECKING:
     from r2x_plexos.models.timeslice import PLEXOSTimeslice
+
+# Type alias for parsed file data - can be time series or constant float values
+ParsedFileData = dict[str, SingleTimeSeries] | dict[str, float]
 
 
 class FileType:
@@ -191,12 +194,12 @@ def detect_file_type(df: pl.LazyFrame, timeslices: list["PLEXOSTimeslice"] | Non
     raise ValueError(f"Unknown file type with columns: {columns}")
 
 
-def extract_all_time_series(
+def extract_file_data(
     path: str,
     default_initial_time: datetime | None = None,
     year: int | None = None,
     timeslices: list["PLEXOSTimeslice"] | None = None,
-) -> dict[str, SingleTimeSeries]:
+) -> ParsedFileData:
     """Extract all time series from a CSV file."""
     df = load_csv_cached(path)
     file_type = detect_file_type(df, timeslices)
@@ -208,16 +211,17 @@ def extract_one_time_series(
     component: str,
     default_initial_time: datetime | None = None,
     year: int | None = None,
-) -> SingleTimeSeries:
+) -> SingleTimeSeries | float:
     """Extract a single time series from a CSV file."""
-    ts_map = extract_all_time_series(path, default_initial_time, year)
+    ts_map = extract_file_data(path, default_initial_time, year)
 
     if component not in ts_map:
         if len(ts_map) == 1:
-            return next(iter(ts_map.values()))
+            result: SingleTimeSeries | float = next(iter(ts_map.values()))  # type: ignore[assignment]
+            return result
         raise ValueError(f"Component '{component}' not found in file: {path}")
 
-    return ts_map[component]
+    return cast(SingleTimeSeries | float, ts_map[component])  # type: ignore[redundant-cast]
 
 
 @singledispatch
@@ -226,7 +230,7 @@ def parse_file(
     df: pl.LazyFrame,
     default_initial_time: datetime | None = None,
     year: int | None = None,
-) -> dict[str, SingleTimeSeries]:
+) -> ParsedFileData:
     """Parse a file based on its type."""
     raise ValueError(f"Unsupported file type: {type(file_type).__name__}")
 
@@ -641,13 +645,10 @@ def _(
     df: pl.LazyFrame,
     default_initial_time: datetime | None = None,
     year: int | None = None,
-) -> dict[str, SingleTimeSeries]:
+) -> dict[str, float]:
     """Parse a simple Name-Value file."""
-    initial_time = default_initial_time or datetime.now()
-    total_hours = hours_in_year(year) if year else 8760
-
     collected_df = df.collect()
-    ts_map: dict[str, SingleTimeSeries] = {}
+    output_map: dict[str, float] = {}
 
     for row in collected_df.iter_rows(named=True):
         name_col = find_column_case_insensitive(row, "name")
@@ -658,10 +659,9 @@ def _(
 
         component_name = row[name_col]
         constant_value = safe_float_conversion(row[value_col])
-        hourly_values = [constant_value] * total_hours
-        ts_map[component_name] = create_time_series(hourly_values, "value", initial_time)
+        output_map[component_name] = constant_value
 
-    return ts_map
+    return output_map
 
 
 @parse_file.register

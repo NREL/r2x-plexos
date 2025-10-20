@@ -71,7 +71,7 @@ def xml_with_variables(tmp_path):
         "INSERT INTO t_tag(object_id,data_id,action_id) VALUES (?,?,?)", (variable_id, battery_capacity_id, 1)
     )
     db._db.execute(
-        "INSERT INTO t_tag(object_id,data_id,action_id) VALUES (?,?,?)", (datafile_id, battery_capacity_id, 1)
+        "INSERT INTO t_tag(object_id,data_id,action_id) VALUES (?,?,?)", (datafile_id, battery_capacity_id, 0)
     )
 
     xml_path = tmp_path / "variable.xml"

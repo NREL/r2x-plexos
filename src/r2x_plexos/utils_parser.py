@@ -1,6 +1,7 @@
 """Utils for parsing plexos XMLs."""
 
 import re
+from datetime import datetime
 
 from infrasys.time_series_models import SingleTimeSeries
 
@@ -12,6 +13,62 @@ def to_snake_case(name: str) -> str:
     name = name.replace(" ", "_")
     name = re.sub("([a-z0-9])([A-Z])", r"\1_\2", name)
     return name.lower()
+
+
+def trim_timeseries_to_horizon(
+    ts: SingleTimeSeries, horizon_start: datetime, horizon_end: datetime
+) -> SingleTimeSeries:
+    """Trim a time series to match a specified horizon (date range).
+
+    Parameters
+    ----------
+    ts : SingleTimeSeries
+        The time series to trim
+    horizon_start : datetime
+        The start of the horizon period
+    horizon_end : datetime
+        The end of the horizon period (inclusive)
+
+    Returns
+    -------
+    SingleTimeSeries
+        A new time series trimmed to the horizon range
+
+    Raises
+    ------
+    ValueError
+        If the horizon range is not within the time series bounds
+    """
+    # Calculate offset in terms of resolution steps
+    resolution_seconds = ts.resolution.total_seconds()
+
+    # Calculate start index
+    start_offset = (horizon_start - ts.initial_timestamp).total_seconds()
+    start_index = int(start_offset / resolution_seconds)
+
+    # Calculate end index (exclusive - slice notation is [start:end))
+    end_offset = (horizon_end - ts.initial_timestamp).total_seconds()
+    end_index = int(end_offset / resolution_seconds)
+
+    # Validate bounds
+    if start_index < 0:
+        raise ValueError(f"Horizon start {horizon_start} is before time series start {ts.initial_timestamp}")
+    if end_index > len(ts.data):
+        raise ValueError(
+            f"Horizon end {horizon_end} is after time series end "
+            f"(ts starts at {ts.initial_timestamp} with {len(ts.data)} points)"
+        )
+
+    # Slice the data
+    trimmed_data = ts.data[start_index:end_index]
+
+    # Create new time series with trimmed data
+    return SingleTimeSeries.from_array(
+        data=trimmed_data,
+        name=ts.name,
+        initial_timestamp=horizon_start,
+        resolution=ts.resolution,
+    )
 
 
 def apply_action_to_timeseries(ts: SingleTimeSeries, action: str, value: float) -> SingleTimeSeries:
@@ -78,7 +135,7 @@ def apply_action(base_value: float, new_value: float, action: str | None) -> flo
     float
         The result of applying the action
     """
-    if action == "*":
+    if action == "*" or action == "\u00d7":
         return base_value * new_value
     elif action == "+":
         return base_value + new_value

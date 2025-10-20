@@ -772,13 +772,19 @@ class PLEXOSPropertyValue:
 
     def _resolve_value(self) -> Any:
         """Resolve property value based on current entries (main resolution logic)."""
+        # Get priority and scenarios early to determine resolution strategy
         priority = get_scenario_priority()
-        if priority:
+        scenarios = self.get_scenarios()
+
+        # Use priority-based resolution only if:
+        # 1. Priority context exists, AND
+        # 2. Property has scenarios OR property doesn't have multiple bands
+        # Multi-band properties without scenarios should return band dict even with priority context
+        if priority and (scenarios or not self.has_bands()):
             return self._resolve_by_priority(priority)
 
         default_key = PLEXOSPropertyKey(scenario=None, band=1, timeslice=None)
         has_pure_default = default_key in self.entries
-        scenarios = self.get_scenarios()
         timeslices = self.get_timeslices()
         bands = self.get_bands()
 

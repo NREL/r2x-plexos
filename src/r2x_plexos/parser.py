@@ -501,9 +501,10 @@ class PLEXOSParser(BaseParser):
             property_value = PLEXOSPropertyValue.from_records(prop_records)
             setattr(component, field_name, property_value)
 
-            # Skip time series registration for DataFile and Variable components
+            # Skip time series registration for DataFile, Variable, and Timeslice components
             # Variables should always use their constant property values
-            if not isinstance(component, (PLEXOSDatafile, PLEXOSVariable)) and (
+            # Timeslices are configuration metadata defining time periods, not data components
+            if not isinstance(component, (PLEXOSDatafile, PLEXOSVariable, PLEXOSTimeslice)) and (
                 property_value.has_datafile() or property_value.has_variable()
             ):
                 self._register_time_series_reference(component, field_name, property_value)

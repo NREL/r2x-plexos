@@ -24,7 +24,7 @@ class PLEXOSBattery(PLEXOSObject):
         float | int,
         PLEXOSProperty(units="%"),
         Field(
-            alias="Charge efficiency",
+            alias="Charge Efficiency",
             description="Charge efficiency",
             ge=0,
         ),
@@ -33,7 +33,7 @@ class PLEXOSBattery(PLEXOSObject):
         float | int,
         PLEXOSProperty(units="%"),
         Field(
-            alias="Discharge efficiency",
+            alias="Discharge Efficiency",
             description="Discharge efficiency",
             ge=0,
         ),
@@ -58,8 +58,9 @@ class PLEXOSBattery(PLEXOSObject):
     ] = 0
     units: Annotated[
         float | int,
+        PLEXOSProperty(),
         Field(
-            alias="PLEXOSProperty",
+            alias="Units",
             description="Number of units of the storage",
             ge=0,
         ),

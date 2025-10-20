@@ -16,7 +16,7 @@ from r2x_plexos.datafile_handler import (
     compute_month_end,
     create_time_series,
     detect_file_type,
-    extract_all_time_series,
+    extract_file_data,
     extract_one_time_series,
     extract_patterns_from_timeslice,
     extract_timeslice_hours,
@@ -297,14 +297,14 @@ def test_extract_all_time_series(mock_load_csv: MagicMock) -> None:
     mock_load_csv.return_value = mock_df
 
     # Call function with a dummy path
-    _ = extract_all_time_series("dummy/path", datetime(2023, 1, 1), 2023)
+    _ = extract_file_data("dummy/path", datetime(2023, 1, 1), 2023)
 
     # Verify results - we should have one timeseries for Generator1
     assert "Generator1" in mock_load_csv.return_value.collect()["Name"]
     assert mock_load_csv.call_args[0][0] == "dummy/path"
 
 
-@patch("r2x_plexos.datafile_handler.extract_all_time_series")
+@patch("r2x_plexos.datafile_handler.extract_file_data")
 def test_extract_one_time_series(mock_extract_all: MagicMock) -> None:
     mock_ts = MagicMock()
     mock_extract_all.return_value = {"Generator1": mock_ts}
@@ -490,13 +490,14 @@ def test_parse_value_file(value_dataframe: pl.LazyFrame) -> None:
     assert "Generator1" in result
     assert "Generator2" in result
 
-    ts1 = result["Generator1"]
-    ts2 = result["Generator2"]
+    val1 = result["Generator1"]
+    val2 = result["Generator2"]
 
-    assert len(ts1.data) == 8760
-    assert len(ts2.data) == 8760
-    assert all(v == 150.0 for v in ts1.data)
-    assert all(v == 250.0 for v in ts2.data)
+    # ValueFile returns float constants, not time series
+    assert isinstance(val1, float)
+    assert isinstance(val2, float)
+    assert val1 == 150.0
+    assert val2 == 250.0
 
 
 @pytest.fixture
@@ -766,7 +767,7 @@ def test_extract_all_time_series_with_timeslices() -> None:
     df = pl.LazyFrame({"Name": ["Generator1"], "Summer": [100.0]})
 
     with patch("r2x_plexos.datafile_handler.load_csv_cached", return_value=df):
-        result = extract_all_time_series(
+        result = extract_file_data(
             "dummy/path", datetime(2023, 1, 1), 2023, [cast("PlexosTimeSlice", mock_timeslice)]
         )
 

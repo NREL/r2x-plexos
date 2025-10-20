@@ -96,13 +96,14 @@ def test_get_or_parse_timeseries_value_file(parser_basic: PLEXOSParser, data_fol
     csv_path = data_folder / "test_value.csv"
     csv_path.write_text("Name,Value\nGenerator1,150.0\nGenerator2,250.0")
 
-    ts = parser_basic._get_or_parse_timeseries(
+    result = parser_basic._get_or_parse_timeseries(
         file_path=str(csv_path), component_name="Generator1", reference_year=2023, timeslices=None
     )
 
-    assert ts is not None
-    assert len(ts.data) == 8760
-    assert all(v == 150.0 for v in ts.data)
+    # ValueFile returns float constants, not time series
+    assert result is not None
+    assert isinstance(result, float)
+    assert result == 150.0
 
 
 @pytest.mark.slow
@@ -116,11 +117,13 @@ def test_get_or_parse_timeseries_caching(parser_basic: PLEXOSParser, data_folder
     )
     assert str(csv_path) in parser_basic._parsed_files_cache
 
-    ts2 = parser_basic._get_or_parse_timeseries(
+    result2 = parser_basic._get_or_parse_timeseries(
         file_path=str(csv_path), component_name="Gen2", reference_year=2023
     )
-    assert ts2 is not None
-    assert all(v == 200.0 for v in ts2.data)
+    # ValueFile returns float constants
+    assert result2 is not None
+    assert isinstance(result2, float)
+    assert result2 == 200.0
 
 
 @pytest.mark.slow
@@ -129,11 +132,13 @@ def test_get_or_parse_timeseries_component_not_found(parser_basic: PLEXOSParser,
     csv_path = data_folder / "test_missing.csv"
     csv_path.write_text("Name,Value\nGenerator1,150.0")
 
-    ts = parser_basic._get_or_parse_timeseries(
+    result = parser_basic._get_or_parse_timeseries(
         file_path=str(csv_path), component_name="NonExistent", reference_year=2023
     )
-    assert ts is not None
-    assert ts.data[0] == 150.0
+    # ValueFile returns float constant
+    assert result is not None
+    assert isinstance(result, float)
+    assert result == 150.0
 
 
 @pytest.mark.slow

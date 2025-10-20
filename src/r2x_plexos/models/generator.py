@@ -108,6 +108,23 @@ class PLEXOSGenerator(PLEXOSObject):
             description="Annual fixed operation and maintenance charge",
         ),
     ] = 0
+    build_cost: Annotated[
+        float | int,
+        PLEXOSProperty(units="usd/kW"),
+        Field(
+            alias="Build Cost",
+            description="Cost of building a generator unit",
+        ),
+    ] = 0
+    economic_life: Annotated[
+        float | int,
+        PLEXOSProperty(units="yr"),
+        Field(
+            alias="Economic Life",
+            description="Economic life of a generator unit (period over which fixed costs are recovered)",
+            ge=0,
+        ),
+    ] = 30
     forced_outage: Annotated[
         float | int,
         PLEXOSProperty(units="MW"),

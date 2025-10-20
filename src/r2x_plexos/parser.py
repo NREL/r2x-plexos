@@ -1,6 +1,7 @@
 """PLEXOS parser implementation for r2x-core framework."""
 
 import itertools
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -19,19 +20,33 @@ from plexosdb import ClassEnum, PlexosDB
 from r2x_core import BaseParser, DataStore
 
 from .config import PLEXOSConfig
-from .datafile_handler import extract_all_time_series
+from .datafile_handler import ParsedFileData, extract_file_data, extract_one_time_series
 from .models import (
     PLEXOSDatafile,
     PLEXOSMembership,
     PLEXOSObject,
     PLEXOSPropertyValue,
     get_horizon,
+    set_horizon,
     set_scenario_priority,
 )
+from .models.collection_property import CollectionProperties
+from .models.timeslice import PLEXOSTimeslice
 from .models.utils import get_field_name_by_alias
 from .models.variable import PLEXOSVariable
 from .utils_mappings import PLEXOS_TYPE_MAP
-from .utils_plexosdb import get_collection_enum, get_collection_name
+from .utils_parser import (
+    apply_action,
+    apply_action_to_timeseries,
+    create_plexos_row,
+    to_snake_case,
+    trim_timeseries_to_horizon,
+)
+from .utils_plexosdb import (
+    get_collection_enum,
+    get_collection_name,
+    resolve_horizon_for_model,
+)
 
 __version__ = version("r2x_plexos")
 
@@ -92,7 +107,7 @@ class PLEXOSParser(BaseParser):
         self._valid_scenarios: list[str] = []
         self._datafile_cache: dict[str, dict[str, Any]] = {}
         self._property_cache: dict[str, float] = {}
-        self._parsed_files_cache: dict[str, dict[str, SingleTimeSeries]] = {}
+        self._parsed_files_cache: dict[str, ParsedFileData] = {}
         self._attached_timeseries: dict[tuple[UUID, str], bool] = {}
         self._failed_references: list[tuple[TimeSeriesReference, str]] = []
         self._membership_cache: dict[int, PLEXOSMembership] = {}
@@ -115,13 +130,37 @@ class PLEXOSParser(BaseParser):
         logger.info("Selecting model={}", self.model_name)
         model_id = self.db.get_object_id(ClassEnum.Model, self.model_name)
         scenario_results = self.db._db.query(SCENARIO_ORDER, (model_id,))
-        # Build priority map from Read Order values
-        # Follow PLEXOS convention: HIGHER Read Order = HIGHER priority (higher value wins)
         priority_map: dict[str, int] = {
             scenario: read_order or 0 for scenario, read_order in scenario_results
         }
         set_scenario_priority(priority_map)
         logger.debug("Found {} scenarios for model = {}", len(priority_map), self.model_name)
+
+        # Resolve horizon from the model
+        horizon_range = resolve_horizon_for_model(self.db, self.model_name)
+        if horizon_range is not None:
+            horizon_start: datetime
+            horizon_end: datetime
+            horizon_start, horizon_end = horizon_range
+            # Validate that horizon year is reasonable relative to reference year
+            # If horizon is more than 5 years before reference year, ignore it
+            if self.config.reference_year is not None and horizon_start.year < self.config.reference_year - 5:
+                logger.warning(
+                    "Horizon year {} is too far before reference year {}, ignoring horizon",
+                    horizon_start.year,
+                    self.config.reference_year,
+                )
+            else:
+                self._horizon_start, self._horizon_end = horizon_start, horizon_end
+                horizon_str = (self._horizon_start.isoformat(), self._horizon_end.isoformat())
+                set_horizon(horizon_str)
+                logger.info(
+                    "Horizon set: {} to {} ({} total hours)",
+                    self._horizon_start,
+                    self._horizon_end,
+                    int((self._horizon_end - self._horizon_start).total_seconds() / 3600),
+                )
+
         return
 
     def build_system_components(self) -> None:
@@ -129,8 +168,6 @@ class PLEXOSParser(BaseParser):
         logger.info("Building PLEXOS system components...")
 
         logger.trace("Querying objects from PLEXOS database...")
-        from collections import defaultdict
-
         main_properties_by_object: dict[int, list[dict[str, Any]]] = defaultdict(list)
         collection_properties_by_object: dict[int, list[dict[str, Any]]] = defaultdict(list)
 
@@ -141,7 +178,6 @@ class PLEXOSParser(BaseParser):
             if not object_id or not isinstance(object_id, int):
                 continue
 
-            # Cast PropertyRecord to dict for type compatibility
             prop_dict: dict[str, Any] = prop  # type: ignore[assignment]
 
             if parent_class and parent_class != "System":
@@ -174,9 +210,12 @@ class PLEXOSParser(BaseParser):
         reference_year = self.config.reference_year or 2024
         horizon = get_horizon()
 
-        try:
-            from r2x_plexos.models.timeslice import PLEXOSTimeslice
+        # Get horizon datetime objects if available
+        horizon_datetime = None
+        if hasattr(self, "_horizon_start") and hasattr(self, "_horizon_end"):
+            horizon_datetime = (self._horizon_start, self._horizon_end)
 
+        try:
             timeslices = list(self.system.get_components(PLEXOSTimeslice))
         except Exception:
             timeslices = []
@@ -201,21 +240,25 @@ class PLEXOSParser(BaseParser):
 
         for ref in direct_refs:
             try:
-                self._attach_direct_datafile_timeseries(ref, reference_year, timeslices, horizon)
+                self._attach_direct_datafile_timeseries(
+                    ref, reference_year, timeslices, horizon, horizon_datetime
+                )
             except Exception as e:
                 logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name}: {e}")
                 self._failed_references.append((ref, str(e)))
 
         for ref in datafile_component_refs:
             try:
-                self._attach_datafile_component_timeseries(ref, reference_year, timeslices, horizon)
+                self._attach_datafile_component_timeseries(
+                    ref, reference_year, timeslices, horizon, horizon_datetime
+                )
             except Exception as e:
                 logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name}: {e}")
                 self._failed_references.append((ref, str(e)))
 
         for ref in variable_refs:
             try:
-                self._attach_variable_timeseries(ref, reference_year, timeslices, horizon)
+                self._attach_variable_timeseries(ref, reference_year, timeslices, horizon, horizon_datetime)
             except Exception as e:
                 logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name} from variable: {e}")
                 self._failed_references.append((ref, str(e)))
@@ -283,18 +326,6 @@ class PLEXOSParser(BaseParser):
 
     def _add_collection_properties(self) -> None:
         """Add collection properties as supplemental attributes."""
-        from collections import defaultdict
-
-        from r2x_plexos.models.collection_property import CollectionProperties
-
-        def to_snake_case(name: str) -> str:
-            """Quick fix to snakecase."""
-            import re
-
-            name = name.replace(" ", "_")
-            name = re.sub("([a-z0-9])([A-Z])", r"\1_\2", name)
-            return name.lower()
-
         for object_id, coll_props_list in self._collection_properties_cache.items():
             component = self._component_cache.get(object_id)
             if not component:
@@ -426,8 +457,6 @@ class PLEXOSParser(BaseParser):
         object_category = first_row["category"]
         plexos_class = first_row["child_class"]
 
-        # Try to get the class enum for this PLEXOS class
-        # Use ClassEnum(value) to look up by value (handles "Data File" -> ClassEnum.DataFile)
         try:
             component_enum = ClassEnum(plexos_class)
         except ValueError:
@@ -438,13 +467,11 @@ class PLEXOSParser(BaseParser):
             )
             return None
 
-        # Get the corresponding Python class
         component_class = PLEXOS_TYPE_MAP.get(component_enum)
         if not component_class:
             logger.debug(f"Unsupported component type: {obj_type}")
             return None
 
-        # Create the component
         logger.trace("Creating model for object={} with type={}", name, component_class)
         component: PLEXOSObject = component_class.model_construct(
             name=name,
@@ -452,7 +479,6 @@ class PLEXOSParser(BaseParser):
             category=object_category,
         )
 
-        # Process properties
         self._process_component_properties(component, db_rows)
         return component
 
@@ -475,7 +501,10 @@ class PLEXOSParser(BaseParser):
             property_value = PLEXOSPropertyValue.from_records(prop_records)
             setattr(component, field_name, property_value)
 
-            if not isinstance(component, PLEXOSDatafile) and (
+            # Skip time series registration for DataFile, Variable, and Timeslice components
+            # Variables should always use their constant property values
+            # Timeslices are configuration metadata defining time periods, not data components
+            if not isinstance(component, (PLEXOSDatafile, PLEXOSVariable, PLEXOSTimeslice)) and (
                 property_value.has_datafile() or property_value.has_variable()
             ):
                 self._register_time_series_reference(component, field_name, property_value)
@@ -535,15 +564,10 @@ class PLEXOSParser(BaseParser):
             raise ValueError("No datafile path provided")
 
         normalized_path = datafile_path.replace("\\", "/")
-
         base_path = Path(self.data_store.folder)
         if self.config.timeseries_dir:
             base_path = base_path / self.config.timeseries_dir
-
-        full_path = base_path / normalized_path
-
-        logger.trace(f"Resolved datafile path: {datafile_path} -> {full_path}")
-        return full_path
+        return base_path / normalized_path
 
     def _get_variable_profile_value(self, variable_id: int, variable_name: str) -> float:
         """Get the profile value from a variable component using scenario priority.
@@ -562,46 +586,15 @@ class PLEXOSParser(BaseParser):
         if profile_prop is None:
             raise ValueError(f"Variable {variable_name} has no profile property")
 
-        # Try scenario priority resolution first
         profile_value = profile_prop.get_value()
         if profile_value is not None:
             return float(profile_value)
 
-        # If no value from priority resolution, check all entries
-        # (Variable properties may exist in scenarios not loaded for the current model)
         for entry in profile_prop.entries.values():
             if entry.value is not None:
                 return float(entry.value)
 
         raise ValueError(f"Variable {variable_name} has no profile value in any entry")
-
-    def _apply_action_to_timeseries(
-        self, ts: SingleTimeSeries, action: str, value: float
-    ) -> SingleTimeSeries:
-        """Apply an action operator to a time series."""
-        action_map = {"\u00d7": "*", "x": "*", "*": "*", "+": "+", "-": "-", "/": "/", "=": "="}
-        normalized_action = action_map.get(action, action)
-
-        if normalized_action not in action_map.values():
-            raise ValueError(f"Unsupported action: {action}")
-
-        if normalized_action == "=" or normalized_action is None:
-            return ts
-
-        if normalized_action == "*":
-            new_data = [x * value for x in ts.data]
-        elif normalized_action == "+":
-            new_data = [x + value for x in ts.data]
-        elif normalized_action == "-":
-            new_data = [x - value for x in ts.data]
-        elif normalized_action == "/":
-            if value == 0:
-                raise ValueError("Cannot divide by zero")
-            new_data = [x / value for x in ts.data]
-        else:
-            return ts
-
-        return SingleTimeSeries.from_array(new_data, ts.name, ts.initial_timestamp, ts.resolution)
 
     def _get_or_parse_timeseries(
         self,
@@ -609,23 +602,46 @@ class PLEXOSParser(BaseParser):
         component_name: str,
         reference_year: int,
         timeslices: list[Any] | None = None,
-    ) -> SingleTimeSeries:
-        """Get time series from cache or parse from file."""
+        horizon_datetime: tuple[datetime, datetime] | None = None,
+    ) -> Any:
+        """Get time series from cache or parse from file. Returns float for constant value files."""
         if file_path in self._parsed_files_cache:
-            logger.trace(f"Using cached file parse: {file_path}")
+            logger.debug(f"Using cached file parse: {file_path}")
             component_map = self._parsed_files_cache[file_path]
+            logger.debug(f"Cached map has {len(component_map)} entries: {list(component_map.keys())[:5]}")
+
+            # Handle empty cache (file has no data for this year/scenario)
+            if len(component_map) == 0:
+                raise ValueError(f"File {file_path} contains no data for the requested year")
+
+            ts: Any
             if component_name in component_map:
-                return component_map[component_name]
+                ts = component_map[component_name]
+            elif len(component_map) == 1:
+                logger.debug(f"Using single entry fallback for component '{component_name}'")
+                ts = next(iter(component_map.values()))
             else:
-                raise ValueError(f"Component {component_name} not found in cached file {file_path}")
+                available = list(component_map.keys())[:10]
+                raise ValueError(
+                    f"Component '{component_name}' not found in cached file {file_path}. "
+                    f"Available components (first 10): {available}"
+                )
+
+            # Apply horizon trimming if needed (only for time series, not floats)
+            if horizon_datetime and isinstance(ts, SingleTimeSeries):
+                ts = trim_timeseries_to_horizon(ts, horizon_datetime[0], horizon_datetime[1])
+
+            return ts
 
         logger.debug(f"Parsing time series file: {file_path}")
 
-        initial_time = datetime(reference_year, 1, 1)
-        ts_map = extract_all_time_series(
+        # Use horizon start year if available, otherwise reference year
+        extraction_year = horizon_datetime[0].year if horizon_datetime else reference_year
+        initial_time = datetime(extraction_year, 1, 1)
+        ts_map = extract_file_data(
             path=file_path,
             default_initial_time=initial_time,
-            year=reference_year,
+            year=extraction_year,
             timeslices=timeslices,
         )
 
@@ -634,10 +650,22 @@ class PLEXOSParser(BaseParser):
 
         if component_name not in ts_map:
             if len(ts_map) == 1:
-                return next(iter(ts_map.values()))
-            raise ValueError(f"Component {component_name} not found in parsed file {file_path}")
+                logger.debug(f"Using single entry fallback for component '{component_name}' in parsed file")
+                ts = next(iter(ts_map.values()))
+            else:
+                available = list(ts_map.keys())[:10]
+                raise ValueError(
+                    f"Component '{component_name}' not found in parsed file {file_path}. "
+                    f"Available components (first 10): {available}"
+                )
+        else:
+            ts = ts_map[component_name]
 
-        return ts_map[component_name]
+        # Apply horizon trimming if needed (only for time series, not floats)
+        if horizon_datetime and isinstance(ts, SingleTimeSeries):
+            ts = trim_timeseries_to_horizon(ts, horizon_datetime[0], horizon_datetime[1])
+
+        return ts
 
     def _attach_direct_datafile_timeseries(
         self,
@@ -645,6 +673,7 @@ class PLEXOSParser(BaseParser):
         reference_year: int,
         timeslices: list[Any] | None,
         horizon: tuple[str, str] | None,
+        horizon_datetime: tuple[datetime, datetime] | None = None,
     ) -> None:
         """Attach time series from direct CSV file path."""
         cache_key = (ref.component_uuid, ref.field_name)
@@ -664,31 +693,66 @@ class PLEXOSParser(BaseParser):
             component_name=ref.component_name,
             reference_year=reference_year,
             timeslices=timeslices,
+            horizon_datetime=horizon_datetime,
         )
 
-        if not ref.is_collection_property:
-            property_value = component.get_property_value(ref.field_name)
-            if isinstance(property_value, PLEXOSPropertyValue):
-                entry = property_value.get_entry()
-                if entry and entry.variable_name and entry.variable_id:
-                    logger.debug(
-                        f"Property {ref.component_name}.{ref.field_name} has variable "
-                        f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
-                    )
-                    variable_value = self._get_variable_profile_value(entry.variable_id, entry.variable_name)
-                    logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
-
-                    if entry.action:
-                        ts_max_before = max(ts.data)
-                        ts = self._apply_action_to_timeseries(ts, entry.action, variable_value)
-                        ts_max_after = max(ts.data)
-
+        # Handle float constant values
+        if isinstance(ts, float):
+            constant_value = ts
+            if not ref.is_collection_property:
+                property_value = component.get_property_value(ref.field_name)
+                if isinstance(property_value, PLEXOSPropertyValue):
+                    entry = property_value.get_entry()
+                    if entry and entry.variable_name and entry.variable_id:
                         logger.debug(
-                            f"Applied action {entry.action}: time series max "
-                            f"before={ts_max_before}, after={ts_max_after}"
+                            f"Property {ref.component_name}.{ref.field_name} has variable "
+                            f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
                         )
+                        variable_value = self._get_variable_profile_value(
+                            entry.variable_id, entry.variable_name
+                        )
+                        logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
 
-        self._attach_or_update_property(component, ref, ts, horizon)
+                        if entry.action:
+                            constant_value = apply_action(constant_value, variable_value, entry.action)
+                            logger.debug(f"Applied action {entry.action}: constant value = {constant_value}")
+
+            # Set the constant value on the component by updating property entries
+            if hasattr(component, ref.field_name):
+                prop_value = component.get_property_value(ref.field_name)
+                if isinstance(prop_value, PLEXOSPropertyValue):
+                    for key, entry in list(prop_value.entries.items()):
+                        prop_value.entries[key] = create_plexos_row(constant_value, entry)
+                else:
+                    setattr(component, ref.field_name, constant_value)
+        else:
+            # Handle time series (SingleTimeSeries)
+            if not ref.is_collection_property:
+                property_value = component.get_property_value(ref.field_name)
+                if isinstance(property_value, PLEXOSPropertyValue):
+                    entry = property_value.get_entry()
+                    if entry and entry.variable_name and entry.variable_id:
+                        logger.debug(
+                            f"Property {ref.component_name}.{ref.field_name} has variable "
+                            f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
+                        )
+                        variable_value = self._get_variable_profile_value(
+                            entry.variable_id, entry.variable_name
+                        )
+                        logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
+
+                        if entry.action:
+                            ts_max_before = max(ts.data)
+                            ts = apply_action_to_timeseries(ts, entry.action, variable_value)
+                            ts_max_after = max(ts.data)
+
+                            logger.debug(
+                                f"Applied action {entry.action}: time series max "
+                                f"before={ts_max_before}, after={ts_max_after}"
+                            )
+
+            self._attach_or_update_property(component, ref, ts, horizon)
+
         self._attached_timeseries[cache_key] = True
 
     def _attach_or_update_property(
@@ -711,27 +775,10 @@ class PLEXOSParser(BaseParser):
             logger.info(f"Updating constant value for {ref.component_name}.{ref.field_name}: {single_value}")
 
             if hasattr(component, ref.field_name):
-                from r2x_plexos.models.base import PLEXOSRow
-
                 prop_value = component.get_property_value(ref.field_name)
                 if isinstance(prop_value, PLEXOSPropertyValue):
                     for key, entry in list(prop_value.entries.items()):
-                        prop_value.entries[key] = PLEXOSRow(
-                            value=single_value,
-                            units=entry.units,
-                            action=entry.action,
-                            scenario_name=entry.scenario_name,
-                            band=entry.band,
-                            timeslice_name=entry.timeslice_name,
-                            date_from=entry.date_from,
-                            date_to=entry.date_to,
-                            datafile_name=entry.datafile_name,
-                            datafile_id=entry.datafile_id,
-                            column_name=entry.column_name,
-                            variable_name=entry.variable_name,
-                            variable_id=entry.variable_id,
-                            text=entry.text,
-                        )
+                        prop_value.entries[key] = create_plexos_row(single_value, entry)
         else:
             field_ts = SingleTimeSeries.from_array(
                 data=ts.data,
@@ -743,30 +790,12 @@ class PLEXOSParser(BaseParser):
             logger.trace(f"Attaching time series to {ref.component_name}.{ref.field_name}")
             self.system.add_time_series(field_ts, component, **features)
 
-            # Update property value to max of time series
             max_value = float(max(ts.data))
             if hasattr(component, ref.field_name):
-                from r2x_plexos.models.base import PLEXOSRow
-
                 prop_value = component.get_property_value(ref.field_name)
                 if isinstance(prop_value, PLEXOSPropertyValue):
                     for key, entry in list(prop_value.entries.items()):
-                        prop_value.entries[key] = PLEXOSRow(
-                            value=max_value,
-                            units=entry.units,
-                            action=entry.action,
-                            scenario_name=entry.scenario_name,
-                            band=entry.band,
-                            timeslice_name=entry.timeslice_name,
-                            date_from=entry.date_from,
-                            date_to=entry.date_to,
-                            datafile_name=entry.datafile_name,
-                            datafile_id=entry.datafile_id,
-                            column_name=entry.column_name,
-                            variable_name=entry.variable_name,
-                            variable_id=entry.variable_id,
-                            text=entry.text,
-                        )
+                        prop_value.entries[key] = create_plexos_row(max_value, entry)
                 else:
                     setattr(component, ref.field_name, max_value)
 
@@ -779,9 +808,6 @@ class PLEXOSParser(BaseParser):
         is_constant: bool,
     ) -> None:
         """Attach time series to a collection property."""
-        from r2x_plexos.models.base import PLEXOSRow
-        from r2x_plexos.models.collection_property import CollectionProperties
-
         coll_props_list = self.system.get_supplemental_attributes_with_component(
             component, CollectionProperties
         )
@@ -810,22 +836,7 @@ class PLEXOSParser(BaseParser):
             )
 
             for key, entry in list(property_value.entries.items()):
-                property_value.entries[key] = PLEXOSRow(
-                    value=single_value,
-                    units=entry.units,
-                    action=entry.action,
-                    scenario_name=entry.scenario_name,
-                    band=entry.band,
-                    timeslice_name=entry.timeslice_name,
-                    date_from=entry.date_from,
-                    date_to=entry.date_to,
-                    datafile_name=entry.datafile_name,
-                    datafile_id=entry.datafile_id,
-                    column_name=entry.column_name,
-                    variable_name=entry.variable_name,
-                    variable_id=entry.variable_id,
-                    text=entry.text,
-                )
+                property_value.entries[key] = create_plexos_row(single_value, entry)
         else:
             field_ts = SingleTimeSeries.from_array(
                 data=ts.data,
@@ -841,22 +852,78 @@ class PLEXOSParser(BaseParser):
 
             max_value = float(max(ts.data))
             for key, entry in list(property_value.entries.items()):
-                property_value.entries[key] = PLEXOSRow(
-                    value=max_value,
-                    units=entry.units,
-                    action=entry.action,
-                    scenario_name=entry.scenario_name,
-                    band=entry.band,
-                    timeslice_name=entry.timeslice_name,
-                    date_from=entry.date_from,
-                    date_to=entry.date_to,
-                    datafile_name=entry.datafile_name,
-                    datafile_id=entry.datafile_id,
-                    column_name=entry.column_name,
-                    variable_name=entry.variable_name,
-                    variable_id=entry.variable_id,
-                    text=entry.text,
-                )
+                property_value.entries[key] = create_plexos_row(max_value, entry)
+
+    def _attach_band_timeseries(
+        self,
+        component: PLEXOSObject,
+        ref: TimeSeriesReference,
+        band_num: int,
+        ts: SingleTimeSeries,
+        horizon: tuple[str, str] | None,
+    ) -> float:
+        """Attach a single band time series to component and return max value."""
+        field_ts = SingleTimeSeries.from_array(
+            data=ts.data,
+            name=ref.field_name,
+            initial_timestamp=ts.initial_timestamp,
+            resolution=ts.resolution,
+        )
+
+        features: dict[str, Any] = {"band": band_num}
+        if horizon:
+            features["horizon"] = horizon
+
+        logger.debug(f"Attaching band {band_num} time series to {ref.component_name}.{ref.field_name}")
+        self.system.add_time_series(field_ts, component, **features)
+
+        return float(max(ts.data))
+
+    def _handle_constant_variable(
+        self,
+        ref: TimeSeriesReference,
+        component: PLEXOSObject,
+        variable_name: str,
+        variable_value: float,
+        cache_key: tuple[UUID, str],
+    ) -> None:
+        """Handle variables without datafiles (constant values)."""
+        logger.info(
+            f"Applying constant variable '{variable_name}' ({variable_value}) to {ref.component_name}.{ref.field_name}"
+        )
+
+        if ref.is_collection_property:
+            coll_props_list = self.system.get_supplemental_attributes_with_component(
+                component, CollectionProperties
+            )
+
+            target_coll_props = None
+            for cp in coll_props_list:
+                if cp.membership.membership_id == ref.membership_id:
+                    target_coll_props = cp
+                    break
+
+            if not target_coll_props:
+                logger.warning(f"Collection properties not found for membership {ref.membership_id}")
+                self._attached_timeseries[cache_key] = True
+                return
+
+            if ref.field_name not in target_coll_props.properties:
+                logger.warning(f"Property {ref.field_name} not found in collection properties")
+                self._attached_timeseries[cache_key] = True
+                return
+
+            property_value = target_coll_props.properties[ref.field_name]
+            for key, entry in list(property_value.entries.items()):
+                property_value.entries[key] = create_plexos_row(variable_value, entry)
+        else:
+            if hasattr(component, ref.field_name):
+                prop_value = component.get_property_value(ref.field_name)
+                if isinstance(prop_value, PLEXOSPropertyValue):
+                    for key, entry in list(prop_value.entries.items()):
+                        prop_value.entries[key] = create_plexos_row(variable_value, entry)
+
+        self._attached_timeseries[cache_key] = True
 
     def _attach_variable_timeseries(
         self,
@@ -864,6 +931,7 @@ class PLEXOSParser(BaseParser):
         reference_year: int,
         timeslices: list[Any] | None,
         horizon: tuple[str, str] | None,
+        horizon_datetime: tuple[datetime, datetime] | None = None,
     ) -> None:
         """Attach time series from a variable's profile property."""
         cache_key = (ref.component_uuid, ref.field_name)
@@ -874,9 +942,6 @@ class PLEXOSParser(BaseParser):
         if not component:
             raise ValueError(f"Component {ref.component_name} not found")
 
-        # Get the variable component
-        from r2x_plexos.models.variable import PLEXOSVariable
-
         variable_name = ref.variable_name
         if not variable_name:
             raise ValueError(f"No variable name in reference for {ref.component_name}.{ref.field_name}")
@@ -885,134 +950,196 @@ class PLEXOSParser(BaseParser):
         if not variable:
             raise ValueError(f"Variable '{variable_name}' not found")
 
-        # Get the variable's profile property
         profile_prop = variable.get_property_value("profile")
         if not profile_prop or not isinstance(profile_prop, PLEXOSPropertyValue):
             logger.debug(f"Variable '{variable_name}' has no profile property")
             return
 
-        # Check if the variable has multiple bands
         bands = sorted({entry.band for entry in profile_prop.entries.values() if entry.band})
 
-        if not bands:
-            logger.debug(f"Variable '{variable_name}' has no bands")
-            return
-
-        # Get the datafile from one of the entries (they all point to the same file)
         first_entry = next(iter(profile_prop.entries.values()))
         if not first_entry.datafile_name:
-            logger.debug(f"Variable '{variable_name}' profile has no datafile")
+            variable_value = profile_prop.get_value()
+
+            if variable_value is None:
+                logger.debug(f"Variable '{variable_name}' profile has no datafile and no constant value")
+                return
+
+            self._handle_constant_variable(ref, component, variable_name, variable_value, cache_key)
             return
 
-        file_path = self._resolve_datafile_path(first_entry.datafile_name)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+        if not bands:
+            variable_constant_value = profile_prop.get_value()
 
-        # Parse the file to get all time series
-        initial_time = datetime(reference_year, 1, 1)
-        from r2x_plexos.datafile_handler import extract_all_time_series
+            if variable_constant_value is not None and variable_constant_value != 0:
+                logger.debug(
+                    f"Variable '{variable_name}' has constant value {variable_constant_value}, applying to datafile values"
+                )
 
-        if str(file_path) in self._parsed_files_cache:
-            ts_map = self._parsed_files_cache[str(file_path)]
-        else:
-            ts_map = extract_all_time_series(
-                path=str(file_path),
-                default_initial_time=initial_time,
-                year=reference_year,
-                timeslices=timeslices,
-            )
-            self._parsed_files_cache[str(file_path)] = ts_map
+                datafile_component_name = first_entry.datafile_name
+                file_path = None
 
-        # Look for band time series
-        band_ts_keys = [key for key in ts_map if key.startswith(f"{variable_name}_band_")]
+                datafile_component = self.system.get_component(PLEXOSDatafile, datafile_component_name)
+                if datafile_component:
+                    filename_prop = datafile_component.get_property_value("filename")
+                    if filename_prop:
+                        file_path_str = filename_prop.get_text_with_priority()
+                        if file_path_str and isinstance(file_path_str, str):
+                            file_path = self._resolve_datafile_path(file_path_str)
 
-        if not band_ts_keys:
-            logger.warning(f"No band time series found for variable '{variable_name}' in {file_path}")
-            return
+                if file_path is None:
+                    logger.debug(f"Trying as direct path: {datafile_component_name}")
+                    file_path = self._resolve_datafile_path(datafile_component_name)
 
-        logger.debug(f"Found {len(band_ts_keys)} band time series for variable '{variable_name}'")
+                if not file_path.exists():
+                    raise FileNotFoundError(f"File not found: {file_path}")
 
-        # Get the property value and action
+                try:
+                    # Use horizon start year if available, otherwise reference year
+                    extraction_year = horizon_datetime[0].year if horizon_datetime else reference_year
+                    ts_or_float = extract_one_time_series(
+                        path=str(file_path),
+                        component=ref.component_name,
+                        default_initial_time=datetime(extraction_year, 1, 1),
+                        year=extraction_year,
+                    )
+
+                    # For collection properties with variables, we expect time series not constants
+                    if not isinstance(ts_or_float, SingleTimeSeries):
+                        logger.warning(
+                            f"Expected time series but got constant value for {ref.component_name}.{ref.field_name}"
+                        )
+                        return
+
+                    ts = ts_or_float
+
+                    # Apply horizon trimming if needed
+                    if horizon_datetime:
+                        ts = trim_timeseries_to_horizon(ts, horizon_datetime[0], horizon_datetime[1])
+
+                    base_value = ts.data[0] if len(set(ts.data)) == 1 else max(ts.data)
+                    result_value = base_value * variable_constant_value
+
+                    logger.info(
+                        f"Applying variable '{variable_name}' ({variable_constant_value}) to {ref.component_name}.{ref.field_name}: {base_value} x {variable_constant_value} = {result_value}"
+                    )
+
+                    if hasattr(component, ref.field_name):
+                        prop_value = component.get_property_value(ref.field_name)
+                        if isinstance(prop_value, PLEXOSPropertyValue):
+                            for key, entry in list(prop_value.entries.items()):
+                                prop_value.entries[key] = create_plexos_row(result_value, entry)
+
+                    self._attached_timeseries[cache_key] = True
+                    return
+
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to apply constant variable '{variable_name}' to {ref.component_name}.{ref.field_name}: {e}"
+                    )
+                    return
+            else:
+                logger.debug(f"Variable '{variable_name}' has no bands")
+                return
+
         property_value = component.get_property_value(ref.field_name)
         action = None
 
         if isinstance(property_value, PLEXOSPropertyValue):
-            entry = property_value.get_entry()
-            if entry:
-                action = entry.action
+            prop_entry = property_value.get_entry()
+            if prop_entry:
+                action = prop_entry.action
 
         all_max_values = []
 
-        for band_key in sorted(band_ts_keys):
-            # Extract band number
-            band_num = int(band_key.split("_band_")[-1])
-            ts = ts_map[band_key]
+        for band_num in bands:
+            band_entry = None
+            for entry in profile_prop.entries.values():
+                if entry.band == band_num:
+                    band_entry = entry
+                    break
 
-            # Apply action if needed (e.g., multiply by property value)
+            if not band_entry or not band_entry.datafile_name:
+                logger.debug(f"Variable '{variable_name}' band {band_num} has no datafile")
+                continue
+
+            # Resolve actual file path from datafile component
+            datafile_component_name = band_entry.datafile_name
+            band_file_path = None
+
+            try:
+                datafile_component = self.system.get_component(PLEXOSDatafile, datafile_component_name)
+                if datafile_component:
+                    filename_prop = datafile_component.get_property_value("filename")
+                    if filename_prop:
+                        file_path_str = filename_prop.get_text_with_priority()
+                        if file_path_str and isinstance(file_path_str, str):
+                            band_file_path = self._resolve_datafile_path(file_path_str)
+            except Exception:
+                # Datafile component not found in system, will try as direct path
+                pass
+
+            if band_file_path is None:
+                logger.debug(
+                    f"Datafile '{datafile_component_name}' has no filename property, trying as direct path"
+                )
+                band_file_path = self._resolve_datafile_path(datafile_component_name)
+
+            if not band_file_path.exists():
+                logger.warning(
+                    f"Datafile not found: '{datafile_component_name}' (band {band_num}) "
+                    f"referenced by variable '{variable_name}' for {ref.component_name}.{ref.field_name}. "
+                    f"Expected path: {band_file_path}"
+                )
+                continue
+
+            if str(band_file_path) in self._parsed_files_cache:
+                ts_map = self._parsed_files_cache[str(band_file_path)]
+            else:
+                # Use horizon start year if available, otherwise reference year
+                extraction_year = horizon_datetime[0].year if horizon_datetime else reference_year
+                ts_map = extract_file_data(
+                    path=str(band_file_path),
+                    default_initial_time=datetime(extraction_year, 1, 1),
+                    year=extraction_year,
+                    timeslices=timeslices,
+                )
+                self._parsed_files_cache[str(band_file_path)] = ts_map
+
+            if ref.component_name not in ts_map:
+                logger.debug(
+                    f"Component '{ref.component_name}' not found in band {band_num} file {band_file_path}"
+                )
+                continue
+
+            ts_value = ts_map[ref.component_name]
+
+            # Band data must be time series, not float constants
+            if not isinstance(ts_value, SingleTimeSeries):
+                continue
+
+            ts = ts_value
+
+            # Apply horizon trimming if needed
+            if horizon_datetime:
+                ts = trim_timeseries_to_horizon(ts, horizon_datetime[0], horizon_datetime[1])
+
             if action:
-                # For variables, we need to get the band-specific profile value
-                band_entry = None
-                for entry in profile_prop.entries.values():
-                    if entry.band == band_num:
-                        band_entry = entry
-                        break
+                base_value = property_value.get_value()
+                if base_value and base_value != 0:
+                    ts = apply_action_to_timeseries(ts, action, base_value)
 
-                if band_entry and isinstance(property_value, PLEXOSPropertyValue):
-                    # The profile value is what we multiply/divide/etc. by
-                    # For this case, the variable profile is the time series itself
-                    # and the action is applied to it with the property's base value
-                    base_value = property_value.get_value()
-                    if base_value and base_value != 0:
-                        ts = self._apply_action_to_timeseries(ts, action, base_value)
+            max_value = self._attach_band_timeseries(component, ref, band_num, ts, horizon)
+            all_max_values.append(max_value)
 
-            # Create time series with property name (band in features)
-            field_ts = SingleTimeSeries.from_array(
-                data=ts.data,
-                name=ref.field_name,
-                initial_timestamp=ts.initial_timestamp,
-                resolution=ts.resolution,
-            )
-
-            # Attach with band and optional horizon features
-            features: dict[str, Any] = {"band": band_num}
-            if horizon:
-                features["horizon"] = horizon
-
-            logger.debug(
-                f"Attaching variable band {band_num} time series to {ref.component_name}.{ref.field_name}"
-            )
-            self.system.add_time_series(field_ts, component, **features)
-
-            # Track max value for this band
-            all_max_values.append(float(max(ts.data)))
-
-        # Update property value to maximum across all bands
         if all_max_values:
             global_max = max(all_max_values)
-            logger.debug(f"Global max across {len(band_ts_keys)} variable bands: {global_max}")
-
+            logger.debug(f"Global max across {len(all_max_values)} variable bands: {global_max}")
             if hasattr(component, ref.field_name):
-                from r2x_plexos.models.base import PLEXOSRow
-
                 prop_value = component.get_property_value(ref.field_name)
                 if isinstance(prop_value, PLEXOSPropertyValue):
                     for key, entry in list(prop_value.entries.items()):
-                        prop_value.entries[key] = PLEXOSRow(
-                            value=global_max,
-                            units=entry.units,
-                            action=entry.action,
-                            scenario_name=entry.scenario_name,
-                            band=entry.band,
-                            timeslice_name=entry.timeslice_name,
-                            date_from=entry.date_from,
-                            date_to=entry.date_to,
-                            datafile_name=entry.datafile_name,
-                            datafile_id=entry.datafile_id,
-                            column_name=entry.column_name,
-                            variable_name=entry.variable_name,
-                            variable_id=entry.variable_id,
-                            text=entry.text,
-                        )
+                        prop_value.entries[key] = create_plexos_row(global_max, entry)
                 else:
                     setattr(component, ref.field_name, global_max)
 
@@ -1024,6 +1151,7 @@ class PLEXOSParser(BaseParser):
         reference_year: int,
         timeslices: list[Any] | None,
         horizon: tuple[str, str] | None,
+        horizon_datetime: tuple[datetime, datetime] | None = None,
     ) -> None:
         """Attach time series from datafile component reference (e.g., "FOM" -> "FOM.csv")."""
         cache_key = (ref.component_uuid, ref.field_name)
@@ -1033,8 +1161,6 @@ class PLEXOSParser(BaseParser):
         component = self.system.get_component_by_uuid(ref.component_uuid)
         if not component:
             raise ValueError(f"Component {ref.component_name} not found")
-
-        from r2x_plexos.models.datafile import PLEXOSDatafile
 
         datafile_component = self.system.get_component(PLEXOSDatafile, ref.datafile_component_name)
         if not datafile_component:
@@ -1058,26 +1184,22 @@ class PLEXOSParser(BaseParser):
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        # Get the full ts_map to check for bands
-        initial_time = datetime(reference_year, 1, 1)
-        from r2x_plexos.datafile_handler import extract_all_time_series
+        # Use horizon start year if available, otherwise reference year
+        extraction_year = horizon_datetime[0].year if horizon_datetime else reference_year
+        initial_time = datetime(extraction_year, 1, 1)
 
-        if str(file_path) in self._parsed_files_cache:
-            ts_map = self._parsed_files_cache[str(file_path)]
-        else:
-            ts_map = extract_all_time_series(
+        if str(file_path) not in self._parsed_files_cache:
+            self._parsed_files_cache[str(file_path)] = extract_file_data(
                 path=str(file_path),
                 default_initial_time=initial_time,
-                year=reference_year,
+                year=extraction_year,
                 timeslices=timeslices,
             )
-            self._parsed_files_cache[str(file_path)] = ts_map
 
-        # Check if there are band time series for this component
-        band_ts_keys = [key for key in ts_map if key.startswith(f"{ref.component_name}_band_")]
+        file_map = self._parsed_files_cache[str(file_path)]
+        band_ts_keys = [key for key in file_map if key.startswith(f"{ref.component_name}_band_")]
 
         if band_ts_keys:
-            # Handle multi-band time series
             logger.debug(
                 f"Found {len(band_ts_keys)} band time series for {ref.component_name}.{ref.field_name}"
             )
@@ -1095,94 +1217,97 @@ class PLEXOSParser(BaseParser):
             all_max_values = []
 
             for band_key in sorted(band_ts_keys):
-                # Extract band number from key like "COMPONENT_NAME_band_1"
                 band_num = int(band_key.split("_band_")[-1])
-                ts = ts_map[band_key]
+                ts_value = file_map[band_key]
 
-                # Apply action if needed
+                # Band data must be time series, not float constants
+                if not isinstance(ts_value, SingleTimeSeries):
+                    continue
+
+                ts = ts_value
+
+                # Apply horizon trimming if needed
+                if horizon_datetime:
+                    ts = trim_timeseries_to_horizon(ts, horizon_datetime[0], horizon_datetime[1])
+
                 if action and variable_value is not None:
-                    ts = self._apply_action_to_timeseries(ts, action, variable_value)
+                    ts = apply_action_to_timeseries(ts, action, variable_value)
 
-                # Create time series with property name (band in features)
-                field_ts = SingleTimeSeries.from_array(
-                    data=ts.data,
-                    name=ref.field_name,
-                    initial_timestamp=ts.initial_timestamp,
-                    resolution=ts.resolution,
-                )
+                max_value = self._attach_band_timeseries(component, ref, band_num, ts, horizon)
+                all_max_values.append(max_value)
 
-                # Attach with band and optional horizon features
-                features: dict[str, Any] = {"band": band_num}
-                if horizon:
-                    features["horizon"] = horizon
-
-                logger.trace(
-                    f"Attaching band {band_num} time series to {ref.component_name}.{ref.field_name}"
-                )
-                self.system.add_time_series(field_ts, component, **features)
-
-                # Track max value for this band
-                all_max_values.append(float(max(ts.data)))
-
-            # Update property value to maximum across all bands
             if all_max_values:
                 global_max = max(all_max_values)
                 logger.debug(f"Global max across {len(band_ts_keys)} bands: {global_max}")
-
                 if hasattr(component, ref.field_name):
-                    from r2x_plexos.models.base import PLEXOSRow
-
                     prop_value = component.get_property_value(ref.field_name)
                     if isinstance(prop_value, PLEXOSPropertyValue):
                         for key, entry in list(prop_value.entries.items()):
-                            prop_value.entries[key] = PLEXOSRow(
-                                value=global_max,
-                                units=entry.units,
-                                action=entry.action,
-                                scenario_name=entry.scenario_name,
-                                band=entry.band,
-                                timeslice_name=entry.timeslice_name,
-                                date_from=entry.date_from,
-                                date_to=entry.date_to,
-                                datafile_name=entry.datafile_name,
-                                datafile_id=entry.datafile_id,
-                                column_name=entry.column_name,
-                                variable_name=entry.variable_name,
-                                variable_id=entry.variable_id,
-                                text=entry.text,
-                            )
+                            prop_value.entries[key] = create_plexos_row(global_max, entry)
                     else:
                         setattr(component, ref.field_name, global_max)
         else:
-            # Handle single time series (no bands)
-            ts = self._get_or_parse_timeseries(
+            ts_or_float = self._get_or_parse_timeseries(
                 file_path=str(file_path),
                 component_name=ref.component_name,
                 reference_year=reference_year,
                 timeslices=timeslices,
+                horizon_datetime=horizon_datetime,
             )
 
-            property_value = component.get_property_value(ref.field_name)
-            if isinstance(property_value, PLEXOSPropertyValue):
-                entry = property_value.get_entry()
-                if entry and entry.variable_name and entry.variable_id:
-                    logger.debug(
-                        f"Property {ref.component_name}.{ref.field_name} has variable "
-                        f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
-                    )
-                    variable_value = self._get_variable_profile_value(entry.variable_id, entry.variable_name)
-                    logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
-
-                    if entry.action:
-                        ts_max_before = max(ts.data)
-                        ts = self._apply_action_to_timeseries(ts, entry.action, variable_value)
-                        ts_max_after = max(ts.data)
-
+            # Handle float constant values
+            if isinstance(ts_or_float, float):
+                constant_value: float = ts_or_float
+                property_value = component.get_property_value(ref.field_name)
+                if isinstance(property_value, PLEXOSPropertyValue):
+                    entry = property_value.get_entry()
+                    if entry and entry.variable_name and entry.variable_id:
                         logger.debug(
-                            f"Applied action {entry.action}: time series max "
-                            f"before={ts_max_before}, after={ts_max_after}"
+                            f"Property {ref.component_name}.{ref.field_name} has variable "
+                            f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
                         )
+                        variable_value = self._get_variable_profile_value(
+                            entry.variable_id, entry.variable_name
+                        )
+                        logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
 
-            self._attach_or_update_property(component, ref, ts, horizon)
+                        constant_value = apply_action(constant_value, variable_value, entry.action)
+                        logger.debug(f"Applied action {entry.action}: constant value = {constant_value}")
+
+                # Set the constant value on the component by updating property entries
+                if hasattr(component, ref.field_name):
+                    prop_value = component.get_property_value(ref.field_name)
+                    if isinstance(prop_value, PLEXOSPropertyValue):
+                        for key, entry in list(prop_value.entries.items()):
+                            prop_value.entries[key] = create_plexos_row(constant_value, entry)
+                    else:
+                        setattr(component, ref.field_name, constant_value)
+            else:
+                # Handle time series (SingleTimeSeries)
+                ts = ts_or_float
+                property_value = component.get_property_value(ref.field_name)
+                if isinstance(property_value, PLEXOSPropertyValue):
+                    entry = property_value.get_entry()
+                    if entry and entry.variable_name and entry.variable_id:
+                        logger.debug(
+                            f"Property {ref.component_name}.{ref.field_name} has variable "
+                            f"{entry.variable_name} (ID={entry.variable_id}) with action {entry.action}"
+                        )
+                        variable_value = self._get_variable_profile_value(
+                            entry.variable_id, entry.variable_name
+                        )
+                        logger.debug(f"Variable {entry.variable_name} profile value: {variable_value}")
+
+                        if entry.action:
+                            ts_max_before = max(ts.data)
+                            ts = apply_action_to_timeseries(ts, entry.action, variable_value)
+                            ts_max_after = max(ts.data)
+
+                            logger.debug(
+                                f"Applied action {entry.action}: time series max "
+                                f"before={ts_max_before}, after={ts_max_after}"
+                            )
+
+                self._attach_or_update_property(component, ref, ts, horizon)
 
         self._attached_timeseries[cache_key] = True

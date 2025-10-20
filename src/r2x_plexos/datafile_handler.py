@@ -1,16 +1,20 @@
 """Handler for PLEXOS datafiles referenced in components."""
 
+import calendar
 import re
 from datetime import datetime, timedelta
 from functools import lru_cache, singledispatch
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 from infrasys import SingleTimeSeries
 
 if TYPE_CHECKING:
     from r2x_plexos.models.timeslice import PLEXOSTimeslice
+
+# Type alias for parsed file data - can be time series or constant float values
+ParsedFileData = dict[str, SingleTimeSeries] | dict[str, float]
 
 
 class FileType:
@@ -105,6 +109,33 @@ def create_time_series(
     return SingleTimeSeries.from_array(values, name, initial_time, resolution)
 
 
+def validate_and_adjust_date(year: int, month: int, day: int, hour: int = 0) -> datetime:
+    """Validate and adjust date to ensure it's valid for the given year.
+
+    If the day is invalid for the month (e.g., Feb 29 in non-leap year),
+    it will be clamped to the maximum valid day for that month.
+    """
+    from loguru import logger
+
+    # Validate month
+    if not 1 <= month <= 12:
+        logger.warning(f"Invalid month {month}, defaulting to January")
+        month = 1
+
+    # Get maximum valid day for this month/year
+    max_day = calendar.monthrange(year, month)[1]
+
+    # Adjust day if it exceeds the maximum
+    if day > max_day:
+        logger.warning(f"Adjusted invalid date M{month:02d},D{day:02d} for year {year} to D{max_day:02d}")
+        day = max_day
+    elif day < 1:
+        logger.warning(f"Invalid day {day}, defaulting to 1")
+        day = 1
+
+    return datetime(year, month, day, hour)
+
+
 def parse_date_pattern(pattern: str, year: int) -> datetime:
     """Parse a date pattern like 'M1,D1,H0' into a datetime object."""
     if not pattern:
@@ -112,6 +143,7 @@ def parse_date_pattern(pattern: str, year: int) -> datetime:
 
     parts = {}
     for token in pattern.split(","):
+        token = token.strip()
         if token.startswith("M"):
             parts["month"] = int(token[1:])
         elif token.startswith("D"):
@@ -119,7 +151,7 @@ def parse_date_pattern(pattern: str, year: int) -> datetime:
         elif token.startswith("H"):
             parts["hour"] = int(token[1:])
 
-    return datetime(year, parts.get("month", 1), parts.get("day", 1), parts.get("hour", 0))
+    return validate_and_adjust_date(year, parts.get("month", 1), parts.get("day", 1), parts.get("hour", 0))
 
 
 def get_hours_for_timeslice(pattern: str, year: int) -> set[int]:
@@ -191,12 +223,12 @@ def detect_file_type(df: pl.LazyFrame, timeslices: list["PLEXOSTimeslice"] | Non
     raise ValueError(f"Unknown file type with columns: {columns}")
 
 
-def extract_all_time_series(
+def extract_file_data(
     path: str,
     default_initial_time: datetime | None = None,
     year: int | None = None,
     timeslices: list["PLEXOSTimeslice"] | None = None,
-) -> dict[str, SingleTimeSeries]:
+) -> ParsedFileData:
     """Extract all time series from a CSV file."""
     df = load_csv_cached(path)
     file_type = detect_file_type(df, timeslices)
@@ -208,16 +240,17 @@ def extract_one_time_series(
     component: str,
     default_initial_time: datetime | None = None,
     year: int | None = None,
-) -> SingleTimeSeries:
+) -> SingleTimeSeries | float:
     """Extract a single time series from a CSV file."""
-    ts_map = extract_all_time_series(path, default_initial_time, year)
+    ts_map = extract_file_data(path, default_initial_time, year)
 
     if component not in ts_map:
         if len(ts_map) == 1:
-            return next(iter(ts_map.values()))
+            result: SingleTimeSeries | float = next(iter(ts_map.values()))  # type: ignore[assignment]
+            return result
         raise ValueError(f"Component '{component}' not found in file: {path}")
 
-    return ts_map[component]
+    return cast(SingleTimeSeries | float, ts_map[component])  # type: ignore[redundant-cast]
 
 
 @singledispatch
@@ -226,7 +259,7 @@ def parse_file(
     df: pl.LazyFrame,
     default_initial_time: datetime | None = None,
     year: int | None = None,
-) -> dict[str, SingleTimeSeries]:
+) -> ParsedFileData:
     """Parse a file based on its type."""
     raise ValueError(f"Unsupported file type: {type(file_type).__name__}")
 
@@ -428,7 +461,7 @@ def _(
 
             hour = period - 1  # Convert 1-24 to 0-23
             component_value = safe_float_conversion(row[component])
-            date_obj = datetime(year=year, month=month, day=day, hour=hour)
+            date_obj = validate_and_adjust_date(year, month, day, hour)
             hour_index = int((date_obj - year_start).total_seconds() / 3600)
 
             if 0 <= hour_index < total_hours:
@@ -641,13 +674,10 @@ def _(
     df: pl.LazyFrame,
     default_initial_time: datetime | None = None,
     year: int | None = None,
-) -> dict[str, SingleTimeSeries]:
+) -> dict[str, float]:
     """Parse a simple Name-Value file."""
-    initial_time = default_initial_time or datetime.now()
-    total_hours = hours_in_year(year) if year else 8760
-
     collected_df = df.collect()
-    ts_map: dict[str, SingleTimeSeries] = {}
+    output_map: dict[str, float] = {}
 
     for row in collected_df.iter_rows(named=True):
         name_col = find_column_case_insensitive(row, "name")
@@ -658,10 +688,9 @@ def _(
 
         component_name = row[name_col]
         constant_value = safe_float_conversion(row[value_col])
-        hourly_values = [constant_value] * total_hours
-        ts_map[component_name] = create_time_series(hourly_values, "value", initial_time)
+        output_map[component_name] = constant_value
 
-    return ts_map
+    return output_map
 
 
 @parse_file.register

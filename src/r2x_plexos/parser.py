@@ -608,13 +608,24 @@ class PLEXOSParser(BaseParser):
         if file_path in self._parsed_files_cache:
             logger.debug(f"Using cached file parse: {file_path}")
             component_map = self._parsed_files_cache[file_path]
+            logger.debug(f"Cached map has {len(component_map)} entries: {list(component_map.keys())[:5]}")
+
+            # Handle empty cache (file has no data for this year/scenario)
+            if len(component_map) == 0:
+                raise ValueError(f"File {file_path} contains no data for the requested year")
+
             ts: Any
             if component_name in component_map:
                 ts = component_map[component_name]
             elif len(component_map) == 1:
+                logger.debug(f"Using single entry fallback for component '{component_name}'")
                 ts = next(iter(component_map.values()))
             else:
-                raise ValueError(f"Component {component_name} not found in cached file {file_path}")
+                available = list(component_map.keys())[:10]
+                raise ValueError(
+                    f"Component '{component_name}' not found in cached file {file_path}. "
+                    f"Available components (first 10): {available}"
+                )
 
             # Apply horizon trimming if needed (only for time series, not floats)
             if horizon_datetime and isinstance(ts, SingleTimeSeries):
@@ -639,9 +650,14 @@ class PLEXOSParser(BaseParser):
 
         if component_name not in ts_map:
             if len(ts_map) == 1:
+                logger.debug(f"Using single entry fallback for component '{component_name}' in parsed file")
                 ts = next(iter(ts_map.values()))
             else:
-                raise ValueError(f"Component {component_name} not found in parsed file {file_path}")
+                available = list(ts_map.keys())[:10]
+                raise ValueError(
+                    f"Component '{component_name}' not found in parsed file {file_path}. "
+                    f"Available components (first 10): {available}"
+                )
         else:
             ts = ts_map[component_name]
 
@@ -1047,9 +1063,34 @@ class PLEXOSParser(BaseParser):
                 logger.debug(f"Variable '{variable_name}' band {band_num} has no datafile")
                 continue
 
-            band_file_path = self._resolve_datafile_path(band_entry.datafile_name)
+            # Resolve actual file path from datafile component
+            datafile_component_name = band_entry.datafile_name
+            band_file_path = None
+
+            try:
+                datafile_component = self.system.get_component(PLEXOSDatafile, datafile_component_name)
+                if datafile_component:
+                    filename_prop = datafile_component.get_property_value("filename")
+                    if filename_prop:
+                        file_path_str = filename_prop.get_text_with_priority()
+                        if file_path_str and isinstance(file_path_str, str):
+                            band_file_path = self._resolve_datafile_path(file_path_str)
+            except Exception:
+                # Datafile component not found in system, will try as direct path
+                pass
+
+            if band_file_path is None:
+                logger.debug(
+                    f"Datafile '{datafile_component_name}' has no filename property, trying as direct path"
+                )
+                band_file_path = self._resolve_datafile_path(datafile_component_name)
+
             if not band_file_path.exists():
-                logger.warning(f"File not found for band {band_num}: {band_file_path}")
+                logger.warning(
+                    f"Datafile not found: '{datafile_component_name}' (band {band_num}) "
+                    f"referenced by variable '{variable_name}' for {ref.component_name}.{ref.field_name}. "
+                    f"Expected path: {band_file_path}"
+                )
                 continue
 
             if str(band_file_path) in self._parsed_files_cache:

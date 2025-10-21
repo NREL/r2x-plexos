@@ -1,0 +1,18 @@
+{
+  "export-configuration": {
+    "time_series_naming_pattern": "${type(component).__name__}_$(ts_metadata).csv"
+  },
+  "horizon-properties": {},
+  "horizon_year": null,
+  "model-properties": {},
+  "models": [],
+  "properties-defaults": {
+    "Decomposition Method": 1,
+    "Dump Energy Price": -100,
+    "VoLL": 1000000.0,
+    "Wheeling Charge": 0.001,
+    "Wheeling Charge Back": 0.001
+  },
+  "resolution": null,
+  "template": null
+}

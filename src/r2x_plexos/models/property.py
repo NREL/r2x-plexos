@@ -25,6 +25,38 @@ class PLEXOSPropertyValue:
     Uses a hash-based dictionary for O(1) lookups with pre-built indexes
     for filtering by dimension (scenario, band, timeslice, dates).
     Designed to handle millions of property values efficiently.
+
+    Serialization
+    -------------
+    Supports Pydantic serialization for compatibility with infrasys System.to_json().
+    When used as a field in Pydantic models, serializes to a list of records
+    compatible with plexosdb_from_records:
+
+    ```python
+    [
+        {
+            "value": 10,
+            "scenario_name": None,
+            "band": 1,
+            "timeslice_name": None,
+            "date_from": None,
+            "date_to": None,
+            "datafile_name": None,
+            "datafile_id": None,
+            "column_name": None,
+            "variable_name": None,
+            "variable_id": None,
+            "action": "=",
+            "units": None,
+            "text": None,
+            "text_class_name": None
+        },
+        ...
+    ]
+    ```
+
+    Round-trip serialization is supported via Pydantic's model_dump(mode='json')
+    when used as a field type, and reconstruction from serialized format.
     """
 
     entries: dict[PLEXOSPropertyKey, PLEXOSRow] = field(default_factory=dict)
@@ -83,7 +115,7 @@ class PLEXOSPropertyValue:
                 value=record.get("value"),
                 scenario=record.get("scenario_name") or record.get("scenario"),
                 band=record.get("band", DEFAULT_BAND),
-                timeslice=record.get("timeslice") or record.get("time_slice"),
+                timeslice=record.get("timeslice_name") or record.get("timeslice") or record.get("time_slice"),
                 date_from=record.get("date_from"),
                 date_to=record.get("date_to"),
                 # Preserve datafile metadata so downstream time series resolution works

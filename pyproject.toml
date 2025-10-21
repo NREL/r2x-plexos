@@ -40,6 +40,7 @@ dev = [
     "pre-commit>=4.2.0",
     "pytest>=8.3.5",
     "pytest-coverage>=0.0",
+    "pytest-mock>=3.15.1",
     "ruff>=0.11.5",
 ]
 docs = [
@@ -75,6 +76,8 @@ pythonpath = [
 testpaths = ["tests"]
 markers = [
   "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "export: marks to test exporter functions",
+  "serialize: marks tests for serialization functionality"
 ]
 
 [tool.mypy]
@@ -131,3 +134,6 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 [tool.ruff.lint.mccabe]
 # Cyclomatic complexity threshold
 max-complexity = 10
+
+[tool.uv.sources]
+r2x-core = { path = "../r2x-core/dev", editable = true }

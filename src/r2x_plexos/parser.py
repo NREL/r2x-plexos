@@ -114,6 +114,7 @@ class PLEXOSParser(BaseParser):
         # PropertyRecord from plexosdb.iterate_properties(), stored as dict for flexibility
         self._collection_properties_cache: dict[int, list[dict[str, Any]]] = {}
 
+        self.db = db
         if not db:
             # NOTE: We should change either plexosdb db to take xmltree or an
             # easier way to get the fpath of resolved globs.
@@ -127,6 +128,10 @@ class PLEXOSParser(BaseParser):
 
     def validate_inputs(self) -> None:
         """Validate input data before parsing."""
+        if self.db is None:
+            msg = "Database not initialized"
+            raise ValueError(msg)
+
         logger.info("Selecting model={}", self.model_name)
         model_id = self.db.get_object_id(ClassEnum.Model, self.model_name)
         scenario_results = self.db._db.query(SCENARIO_ORDER, (model_id,))
@@ -144,11 +149,11 @@ class PLEXOSParser(BaseParser):
             horizon_start, horizon_end = horizon_range
             # Validate that horizon year is reasonable relative to reference year
             # If horizon is more than 5 years before reference year, ignore it
-            if self.config.reference_year is not None and horizon_start.year < self.config.reference_year - 5:
+            if self.config.horizon_year is not None and horizon_start.year < self.config.horizon_year - 5:
                 logger.warning(
                     "Horizon year {} is too far before reference year {}, ignoring horizon",
                     horizon_start.year,
-                    self.config.reference_year,
+                    self.config.horizon_year,
                 )
             else:
                 self._horizon_start, self._horizon_end = horizon_start, horizon_end
@@ -165,6 +170,10 @@ class PLEXOSParser(BaseParser):
 
     def build_system_components(self) -> None:
         """Create PLEXOS components."""
+        if self.db is None:
+            msg = "Database not initialized"
+            raise ValueError(msg)
+
         logger.info("Building PLEXOS system components...")
 
         logger.trace("Querying objects from PLEXOS database...")
@@ -207,7 +216,7 @@ class PLEXOSParser(BaseParser):
         """Attach time series data to components."""
         logger.info("Building time series data...")
 
-        reference_year = self.config.reference_year or 2024
+        reference_year = self.config.horizon_year or 2024
         horizon = get_horizon()
 
         # Get horizon datetime objects if available

@@ -99,7 +99,7 @@ class PropertySpecification:
 
         Parameters
         ----------
-        value : float, int, dict, or PLEXOSPropertyValue, or None
+        value : float, int, dict, list, or PLEXOSPropertyValue, or None
             Input value to validate
         info : core_schema.ValidationInfo
             Pydantic validation context
@@ -129,9 +129,58 @@ class PropertySpecification:
         if isinstance(value, dict):
             return self._validate_dict(value)
 
+        if isinstance(value, list):
+            # Deserialization from JSON - convert list of records to PLEXOSPropertyValue
+            return PLEXOSPropertyValue.from_records(value, units=self.units)
+
         raise TypeError(
-            f"Expected float, int, dict, PLEXOSPropertyValue, or None, got {type(value).__name__}"
+            f"Expected float, int, dict, list, PLEXOSPropertyValue, or None, got {type(value).__name__}"
         )
+
+    def _serialize_property_value(self, value: Any, info: Any) -> Any:
+        """Serialize PLEXOSPropertyValue to list of records.
+
+        For both JSON and Python serialization modes, convert to list of dicts
+        to avoid unhashable dict issues with PLEXOSPropertyKey.
+
+        Note: Normal attribute access (not during model_dump) doesn't use this
+        serializer, so PLEXOSPropertyValue instances are preserved for get_value().
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, int | float):
+            return value
+
+        if isinstance(value, PLEXOSPropertyValue):
+            # Always serialize to list of records (for both JSON and Python modes)
+            # This avoids the unhashable dict issue with PLEXOSPropertyKey
+            entries_list = []
+            for row in value.entries.values():
+                row_dict = {
+                    "value": row.value,
+                    "period_type": row.period_type,
+                    "period_name": row.period_name,
+                    "timeslice_name": row.timeslice_name,
+                    "timeslice_id": row.timeslice_id,
+                    "band": row.band,
+                    "units": row.units,
+                    "action": row.action,
+                    "scenario_name": row.scenario_name,
+                    "datafile_name": row.datafile_name,
+                    "datafile_id": row.datafile_id,
+                    "column_name": row.column_name,
+                    "variable_name": row.variable_name,
+                    "variable_id": row.variable_id,
+                    "date_from": row.date_from,
+                    "date_to": row.date_to,
+                    "text": row.text,
+                    "text_class_name": row.text_class_name,
+                }
+                entries_list.append(row_dict)
+            return entries_list
+
+        return value
 
     def __get_pydantic_core_schema__(
         self, source_type: Any, handler: GetCoreSchemaHandler
@@ -166,8 +215,15 @@ class PropertySpecification:
                     core_schema.none_schema(),  # Allow None values
                     python_schema,  # Use source schema for numeric values (includes Field constraints)
                     core_schema.dict_schema(),
+                    core_schema.list_schema(
+                        core_schema.dict_schema()
+                    ),  # Allow list of dicts for deserialization
                     core_schema.is_instance_schema(PLEXOSPropertyValue),
                 ]
+            ),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                self._serialize_property_value,
+                info_arg=True,
             ),
         )
 

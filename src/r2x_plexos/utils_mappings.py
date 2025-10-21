@@ -38,3 +38,4 @@ PLEXOS_TYPE_MAP: dict[ClassEnum, type[PLEXOSObject]] = {
     ClassEnum.Model: PLEXOSModel,
     ClassEnum.Horizon: PLEXOSHorizon,
 }
+PLEXOS_TYPE_MAP_INVERTED = dict(zip(PLEXOS_TYPE_MAP.values(), PLEXOS_TYPE_MAP.keys(), strict=False))

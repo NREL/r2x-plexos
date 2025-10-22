@@ -323,6 +323,7 @@ class PLEXOSParser(BaseParser):
             membership = PLEXOSMembership(
                 membership_id=membership_id,
                 parent_object=parent_object,
+                child_object=child_object,
                 collection=collection_enum,
             )
 
@@ -330,6 +331,10 @@ class PLEXOSParser(BaseParser):
 
             self.system.add_supplemental_attribute(
                 child_object,
+                membership,
+            )
+            self.system.add_supplemental_attribute(
+                parent_object,
                 membership,
             )
 
@@ -781,7 +786,7 @@ class PLEXOSParser(BaseParser):
 
         if is_constant:
             single_value = float(next(iter(unique_values)))
-            logger.info(f"Updating constant value for {ref.component_name}.{ref.field_name}: {single_value}")
+            logger.debug(f"Updating constant value for {ref.component_name}.{ref.field_name}: {single_value}")
 
             if hasattr(component, ref.field_name):
                 prop_value = component.get_property_value(ref.field_name)
@@ -840,7 +845,7 @@ class PLEXOSParser(BaseParser):
         if is_constant:
             unique_values = set(ts.data)
             single_value = float(next(iter(unique_values)))
-            logger.info(
+            logger.debug(
                 f"Updating constant collection property value for {ref.component_name}.{ref.field_name}: {single_value}"
             )
 
@@ -897,7 +902,7 @@ class PLEXOSParser(BaseParser):
         cache_key: tuple[UUID, str],
     ) -> None:
         """Handle variables without datafiles (constant values)."""
-        logger.info(
+        logger.debug(
             f"Applying constant variable '{variable_name}' ({variable_value}) to {ref.component_name}.{ref.field_name}"
         )
 

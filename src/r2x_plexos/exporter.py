@@ -1,5 +1,7 @@
 """Export PLEXOS system to XML."""
 
+from itertools import groupby
+from pathlib import Path
 from typing import Any, cast
 
 from loguru import logger
@@ -15,7 +17,13 @@ from r2x_plexos.utils_simulation import (
 
 from .config import PLEXOSConfig
 from .models import PLEXOSDatafile, PLEXOSHorizon, PLEXOSMembership, PLEXOSModel, PLEXOSObject
-from .utils_exporter import get_component_category
+from .models.property import PLEXOSPropertyValue
+from .utils_exporter import (
+    export_time_series_csv,
+    generate_csv_filename,
+    get_component_category,
+    get_output_directory,
+)
 from .utils_mappings import PLEXOS_TYPE_MAP_INVERTED
 
 NESTED_ATTRIBUTES = {"ext", "bus", "services"}
@@ -214,10 +222,71 @@ class PLEXOSExporter(BaseExporter):
         return Ok(None)
 
     def export_time_series(self) -> Result[None, ExporterError]:
-        """Export components to db."""
+        """Export time series to CSV files and update property references.
+
+        Returns
+        -------
+        Result[None, ExporterError]
+            Ok(None) on success, Err(ExporterError) on failure
+        """
         logger.info("Exporting time series to CSV files")
 
-        return Ok(None)
+        try:
+            components_with_ts = list(
+                self.system.get_components(PLEXOSObject, filter_func=lambda c: self.system.has_time_series(c))
+            )
+
+            if not components_with_ts:
+                logger.info("No components with time series found")
+                return Ok(None)
+
+            logger.info(f"Found {len(components_with_ts)} components with time series")
+
+            ts_metadata: list[tuple[Any, Any]] = []
+            for component in components_with_ts:
+                ts_keys = self.system.list_time_series_keys(component)
+                ts_metadata.extend((component, ts_key) for ts_key in ts_keys)
+
+            logger.info(f"Found {len(ts_metadata)} time series keys total")
+
+            def grouping_key(item: tuple[Any, Any]) -> tuple[str, tuple[tuple[str, Any], ...]]:
+                _component, ts_key = item
+                return (ts_key.name, tuple(sorted(ts_key.features.items())))
+
+            ts_metadata_sorted = sorted(ts_metadata, key=grouping_key)
+
+            csv_filepaths: list[Path] = []
+            output_dir = get_output_directory(self.config, self.system)
+
+            for group_key, group_items in groupby(ts_metadata_sorted, key=grouping_key):
+                field_name, features_tuple = group_key
+                metadata_dict = dict(features_tuple)
+                group_list = list(group_items)
+
+                first_component = group_list[0][0]
+                component_class = type(first_component).__name__
+
+                filename = generate_csv_filename(field_name, component_class, metadata_dict)
+                filepath = output_dir / filename
+                csv_filepaths.append(filepath)
+
+                time_series_data: list[tuple[str, Any]] = []
+                for component, ts_key in group_list:
+                    ts = self.system.get_time_series(component, ts_key.name, **ts_key.features)
+                    time_series_data.append((component.name, ts))
+
+                export_time_series_csv(filepath, time_series_data)
+                logger.info(f"Exported {len(time_series_data)} time series to {filepath}")
+
+            logger.info(f"Created {len(csv_filepaths)} CSV files")
+
+            self._sync_datafile_objects(csv_filepaths)
+
+            return Ok(None)
+
+        except Exception as e:
+            logger.error(f"Failed to export time series: {e}")
+            return Err(ExporterError(f"Time series export failed: {e}"))
 
     def validate_export(self) -> Result[None, ExporterError]:
         """Validate the export (placeholder for future validation logic)."""
@@ -247,15 +316,13 @@ class PLEXOSExporter(BaseExporter):
             logger.debug(f"Adding properties for {len(records)} {component_type.__name__} components")
 
             collection = get_default_collection(class_enum)
-            for i in range(0, len(records), 1000):
-                chunk = records[i : i + 1000]
-                self.db.add_properties_from_records(
-                    chunk,
-                    object_class=class_enum,
-                    parent_class=ClassEnum.System,
-                    collection=collection,
-                    scenario=self.plexos_scenario,
-                )
+            self.db.add_properties_from_records(
+                records,
+                object_class=class_enum,
+                parent_class=ClassEnum.System,
+                collection=collection,
+                scenario=self.plexos_scenario,
+            )
 
     def _add_memberships(self) -> None:
         """Add membership relationships to the database.
@@ -324,3 +391,23 @@ class PLEXOSExporter(BaseExporter):
             logger.info(f"Added {added_count} memberships")
         else:
             logger.warning("No memberships were added")
+
+    def _sync_datafile_objects(self, csv_filepaths: list[Path]) -> None:
+        """Create or update PLEXOSDatafile objects for exported CSVs."""
+        existing_datafiles = {df.name: df for df in self.system.get_components(PLEXOSDatafile)}
+
+        for filepath in csv_filepaths:
+            stem = filepath.stem
+
+            if stem not in existing_datafiles:
+                prop_value = PLEXOSPropertyValue()
+                prop_value.add_entry(value=0.0, text=str(filepath))
+                datafile = PLEXOSDatafile(name=stem, filename=prop_value)
+                self.system.add_component(datafile)
+                logger.debug(f"Created PLEXOSDatafile object for {filepath.name}")
+            else:
+                existing_df = existing_datafiles[stem]
+                if existing_df.filename is None:
+                    existing_df.filename = PLEXOSPropertyValue()
+                existing_df.filename.add_entry(value=0.0, text=str(filepath))
+                logger.debug(f"Updated PLEXOSDatafile object for {filepath.name}")

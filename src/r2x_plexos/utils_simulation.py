@@ -25,7 +25,7 @@ from r2x_plexos.utils_plexosdb import validate_simulation_attribute
 
 
 @dataclass
-class SimulationBuildResult:
+class SimulationConfig:
     """Result from build_plexos_simulation."""
 
     models: list[PLEXOSModel]
@@ -288,7 +288,7 @@ def build_plexos_simulation(
     config: dict[str, Any],
     defaults: dict[str, Any] | None = None,
     simulation_config: dict[str, PLEXOSConfiguration | None] | None = None,
-) -> Result[SimulationBuildResult, str]:
+) -> Result[SimulationConfig, str]:
     """
     Build PLEXOS simulation configuration from user config.
 
@@ -367,7 +367,7 @@ def build_plexos_simulation(
         defaults = {}
 
     # Route to appropriate builder based on config
-    result: Result[SimulationBuildResult, str]
+    result: Result[SimulationConfig, str]
     if "models" in config:
         # Fully custom configuration
         result = _build_custom_simulation(config, defaults)
@@ -382,7 +382,7 @@ def build_plexos_simulation(
     if result.is_ok() and simulation_config is not None:
         build_result = result.unwrap()
         return Ok(
-            SimulationBuildResult(
+            SimulationConfig(
                 models=build_result.models,
                 horizons=build_result.horizons,
                 memberships=build_result.memberships,
@@ -395,7 +395,7 @@ def build_plexos_simulation(
 
 def _build_simple_simulation(
     config: dict[str, Any], defaults: dict[str, Any]
-) -> Result[SimulationBuildResult, str]:
+) -> Result[SimulationConfig, str]:
     """Build simulation from simple config (horizon_year + resolution)."""
     horizon_year = config.get("horizon_year")
     resolution = config.get("resolution", "1D")
@@ -435,7 +435,7 @@ def _build_simple_simulation(
     )
 
     return Ok(
-        SimulationBuildResult(
+        SimulationConfig(
             models=[model],
             horizons=[horizon],
             memberships=[(model.name, horizon.name)],
@@ -443,9 +443,7 @@ def _build_simple_simulation(
     )
 
 
-def _build_from_template(
-    config: dict[str, Any], defaults: dict[str, Any]
-) -> Result[SimulationBuildResult, str]:
+def _build_from_template(config: dict[str, Any], defaults: dict[str, Any]) -> Result[SimulationConfig, str]:
     """Build simulation from template specification."""
     template_name = config["template"]
     horizon_year = config.get("horizon_year")
@@ -465,7 +463,7 @@ def _build_from_template(
 
 def _build_monthly_models(
     horizon_year: int, config: dict[str, Any], defaults: dict[str, Any]
-) -> Result[SimulationBuildResult, str]:
+) -> Result[SimulationConfig, str]:
     """Generate 12 monthly models for the specified horizon_year."""
     models = []
     horizons = []
@@ -510,7 +508,7 @@ def _build_monthly_models(
         memberships.append((model_name, horizon_name))
 
     return Ok(
-        SimulationBuildResult(
+        SimulationConfig(
             models=models,
             horizons=horizons,
             memberships=memberships,
@@ -520,7 +518,7 @@ def _build_monthly_models(
 
 def _build_weekly_models(
     horizon_year: int, config: dict[str, Any], defaults: dict[str, Any]
-) -> Result[SimulationBuildResult, str]:
+) -> Result[SimulationConfig, str]:
     """Generate 52 weekly models for the specified horizon_year."""
     models = []
     horizons = []
@@ -571,7 +569,7 @@ def _build_weekly_models(
         memberships.append((model_name, horizon_name))
 
     return Ok(
-        SimulationBuildResult(
+        SimulationConfig(
             models=models,
             horizons=horizons,
             memberships=memberships,
@@ -581,7 +579,7 @@ def _build_weekly_models(
 
 def _build_quarterly_models(
     horizon_year: int, config: dict[str, Any], defaults: dict[str, Any]
-) -> Result[SimulationBuildResult, str]:
+) -> Result[SimulationConfig, str]:
     """Generate 4 quarterly models for the specified horizon_year."""
     models = []
     horizons = []
@@ -633,7 +631,7 @@ def _build_quarterly_models(
         memberships.append((model_name, horizon_name))
 
     return Ok(
-        SimulationBuildResult(
+        SimulationConfig(
             models=models,
             horizons=horizons,
             memberships=memberships,
@@ -643,7 +641,7 @@ def _build_quarterly_models(
 
 def _build_custom_simulation(
     config: dict[str, Any], defaults: dict[str, Any]
-) -> Result[SimulationBuildResult, str]:
+) -> Result[SimulationConfig, str]:
     """Build simulation from fully custom specification."""
     models = []
     horizons = []
@@ -695,7 +693,7 @@ def _build_custom_simulation(
         memberships.append((model_name, horizon_name))
 
     return Ok(
-        SimulationBuildResult(
+        SimulationConfig(
             models=models,
             horizons=horizons,
             memberships=memberships,
@@ -738,7 +736,7 @@ def _add_horizon_attributes(db: PlexosDB, horizon: PLEXOSHorizon) -> None:
 
 def ingest_simulation_to_plexosdb(
     db: PlexosDB,
-    result: SimulationBuildResult,
+    result: SimulationConfig,
     validate: bool = True,
 ) -> Result[dict[str, Any], str]:
     """

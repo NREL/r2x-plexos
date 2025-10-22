@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import DirectoryPath, Field, FilePath
 
 from r2x_core.plugin_config import PluginConfig
+from r2x_plexos.utils_simulation import SimulationConfig
 
 
 class PLEXOSConfig(PluginConfig):
@@ -22,3 +23,6 @@ class PLEXOSConfig(PluginConfig):
     template: Annotated[
         FilePath | None, Field(description="File to the XML to use as template. If passed it must exist.")
     ] = None
+    simulation_config: Annotated[SimulationConfig | None, Field(description="Simulation configuration")] = (
+        None
+    )

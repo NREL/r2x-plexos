@@ -9,11 +9,6 @@ from plexosdb import ClassEnum, PlexosDB
 from plexosdb.enums import get_default_collection
 
 from r2x_core import BaseExporter, DataStore, Err, ExporterError, Ok, Result
-from r2x_plexos.utils_simulation import (
-    build_plexos_simulation,
-    get_default_simulation_config,
-    ingest_simulation_to_plexosdb,
-)
 
 from .config import PLEXOSConfig
 from .models import PLEXOSDatafile, PLEXOSHorizon, PLEXOSMembership, PLEXOSModel, PLEXOSObject
@@ -25,6 +20,11 @@ from .utils_exporter import (
     get_output_directory,
 )
 from .utils_mappings import PLEXOS_TYPE_MAP_INVERTED
+from .utils_simulation import (
+    build_plexos_simulation,
+    get_default_simulation_config,
+    ingest_simulation_to_plexosdb,
+)
 
 NESTED_ATTRIBUTES = {"ext", "bus", "services"}
 DEFAULT_XML_TEMPLATE = "master_9.2R6_btu.xml"
@@ -99,7 +99,6 @@ class PLEXOSExporter(BaseExporter):
         existing_models = self.db.list_objects_by_class(ClassEnum.Model)
         existing_horizons = self.db.list_objects_by_class(ClassEnum.Horizon)
 
-        # Workflow 1: Existing Database - Skip if both models and horizons exist
         if existing_models and existing_horizons:
             logger.info(
                 f"Using existing database configuration: "
@@ -107,9 +106,7 @@ class PLEXOSExporter(BaseExporter):
             )
             return Ok(None)
 
-        # Workflow 2: New Database - Create simulation from user configuration
         logger.info("New database detected - creating simulation configuration from user input")
-
         simulation_config_dict = getattr(self.config, "simulation_config", None)
         if simulation_config_dict is None:
             logger.debug("Using default simulation configuration")
@@ -199,7 +196,7 @@ class PLEXOSExporter(BaseExporter):
             components.sort(key=get_component_category)  # type: ignore[arg-type]
 
             # Group components by category and add each group
-            for category, group in groupby(components, key=get_component_category):
+            for category, group in groupby(components, key=get_component_category):  # type: ignore[arg-type]
                 names = [comp.name for comp in group]
                 self.db.add_objects(class_enum, *names, category=category)
 
@@ -219,6 +216,14 @@ class PLEXOSExporter(BaseExporter):
         self._add_component_properties()
         self._add_memberships()
 
+        output_dir = get_output_directory(self.config, self.system)
+        base_folder = output_dir.parent
+        xml_filename = f"{self.config.model_name}.xml"
+        xml_path = base_folder / xml_filename
+
+        logger.info(f"Exporting XML to {xml_path}")
+        self.db.to_xml(xml_path)
+
         return Ok(None)
 
     def export_time_series(self) -> Result[None, ExporterError]:
@@ -229,64 +234,60 @@ class PLEXOSExporter(BaseExporter):
         Result[None, ExporterError]
             Ok(None) on success, Err(ExporterError) on failure
         """
-        logger.info("Exporting time series to CSV files")
+        components_with_ts = list(
+            self.system.get_components(PLEXOSObject, filter_func=lambda c: self.system.has_time_series(c))
+        )
 
-        try:
-            components_with_ts = list(
-                self.system.get_components(PLEXOSObject, filter_func=lambda c: self.system.has_time_series(c))
-            )
-
-            if not components_with_ts:
-                logger.info("No components with time series found")
-                return Ok(None)
-
-            logger.info(f"Found {len(components_with_ts)} components with time series")
-
-            ts_metadata: list[tuple[Any, Any]] = []
-            for component in components_with_ts:
-                ts_keys = self.system.list_time_series_keys(component)
-                ts_metadata.extend((component, ts_key) for ts_key in ts_keys)
-
-            logger.info(f"Found {len(ts_metadata)} time series keys total")
-
-            def grouping_key(item: tuple[Any, Any]) -> tuple[str, tuple[tuple[str, Any], ...]]:
-                _component, ts_key = item
-                return (ts_key.name, tuple(sorted(ts_key.features.items())))
-
-            ts_metadata_sorted = sorted(ts_metadata, key=grouping_key)
-
-            csv_filepaths: list[Path] = []
-            output_dir = get_output_directory(self.config, self.system)
-
-            for group_key, group_items in groupby(ts_metadata_sorted, key=grouping_key):
-                field_name, features_tuple = group_key
-                metadata_dict = dict(features_tuple)
-                group_list = list(group_items)
-
-                first_component = group_list[0][0]
-                component_class = type(first_component).__name__
-
-                filename = generate_csv_filename(field_name, component_class, metadata_dict)
-                filepath = output_dir / filename
-                csv_filepaths.append(filepath)
-
-                time_series_data: list[tuple[str, Any]] = []
-                for component, ts_key in group_list:
-                    ts = self.system.get_time_series(component, ts_key.name, **ts_key.features)
-                    time_series_data.append((component.name, ts))
-
-                export_time_series_csv(filepath, time_series_data)
-                logger.info(f"Exported {len(time_series_data)} time series to {filepath}")
-
-            logger.info(f"Created {len(csv_filepaths)} CSV files")
-
-            self._sync_datafile_objects(csv_filepaths)
-
+        if not components_with_ts:
+            logger.info("No components with time series found")
             return Ok(None)
 
-        except Exception as e:
-            logger.error(f"Failed to export time series: {e}")
-            return Err(ExporterError(f"Time series export failed: {e}"))
+        logger.debug(f"Found {len(components_with_ts)} components with time series")
+
+        ts_metadata: list[tuple[Any, Any]] = []
+        for component in components_with_ts:
+            ts_keys = self.system.list_time_series_keys(component)
+            ts_metadata.extend((component, ts_key) for ts_key in ts_keys)
+
+        logger.debug(f"Found {len(ts_metadata)} time series keys total")
+
+        def grouping_key(item: tuple[Any, Any]) -> tuple[str, tuple[tuple[str, Any], ...]]:
+            _component, ts_key = item
+            return (ts_key.name, tuple(sorted(ts_key.features.items())))
+
+        ts_metadata_sorted = sorted(ts_metadata, key=grouping_key)
+
+        csv_filepaths: list[Path] = []
+        output_dir = get_output_directory(self.config, self.system)
+
+        for group_key, group_items in groupby(ts_metadata_sorted, key=grouping_key):
+            field_name, features_tuple = group_key
+            metadata_dict = dict(features_tuple)
+            group_list = list(group_items)
+
+            first_component = group_list[0][0]
+            component_class = type(first_component).__name__
+
+            filename = generate_csv_filename(field_name, component_class, metadata_dict)
+            filepath = output_dir / filename
+            csv_filepaths.append(filepath)
+
+            time_series_data: list[tuple[str, Any]] = []
+            for component, ts_key in group_list:
+                ts = self.system.get_time_series(component, ts_key.name, **ts_key.features)
+                time_series_data.append((component.name, ts))
+
+            result = export_time_series_csv(filepath, time_series_data)
+
+            if result.is_err():
+                assert isinstance(result, Err)
+                logger.error(f"Failed to export time series: {result.error}")
+                return Err(ExporterError(f"Time series export failed: {result.error}"))
+
+        logger.info("Exported {} time series to {}", len(time_series_data), filepath)
+        self._sync_datafile_objects(csv_filepaths)
+
+        return Ok(None)
 
     def validate_export(self) -> Result[None, ExporterError]:
         """Validate the export (placeholder for future validation logic)."""
@@ -309,15 +310,34 @@ class PLEXOSExporter(BaseExporter):
             if not class_enum:
                 continue
 
-            records = list(self.system.to_records(component_type, exclude_defaults=self.exclude_defaults))
-            if not records:
+            # Convert records to use PLEXOS property names (aliases) and filter metadata
+            metadata_fields = {"name", "category", "uuid", "label", "description", "object_id"}
+            plexos_records = []
+
+            for comp in self.system.get_components(component_type):
+                aliased_dict = comp.model_dump(by_alias=True, exclude_defaults=self.exclude_defaults)
+
+                plexos_record: dict[str, Any] = {}
+                for k, v in aliased_dict.items():
+                    if k in metadata_fields or v is None:
+                        continue
+                    if isinstance(v, int | float | str | bool):
+                        plexos_record[k] = v
+                    elif isinstance(v, dict) and "text" in v:
+                        # Handle text/datafile properties
+                        plexos_record[k] = v
+
+                plexos_record["name"] = comp.name  # Keep the name field
+                plexos_records.append(plexos_record)
+
+            if not plexos_records:
                 continue
 
-            logger.debug(f"Adding properties for {len(records)} {component_type.__name__} components")
+            logger.debug(f"Adding properties for {len(plexos_records)} {component_type.__name__} components")
 
             collection = get_default_collection(class_enum)
             self.db.add_properties_from_records(
-                records,
+                plexos_records,
                 object_class=class_enum,
                 parent_class=ClassEnum.System,
                 collection=collection,
@@ -325,72 +345,52 @@ class PLEXOSExporter(BaseExporter):
             )
 
     def _add_memberships(self) -> None:
-        """Add membership relationships to the database.
+        """Add membership relationships to the database."""
+        memberships = list(self.system.get_supplemental_attributes(PLEXOSMembership))
 
-        Memberships are stored as supplemental attributes attached to child components.
-        Each membership defines a parent_object and collection, while the child is the
-        component the supplemental attribute is attached to.
-        """
-        added_count = 0
+        if not memberships:
+            logger.warning("No memberships found in system")
+            return
 
-        # Iterate through all component types to find their memberships
-        for component_type in self.system.get_component_types():
-            # Skip types that don't participate in memberships
-            if component_type in {PLEXOSModel, PLEXOSHorizon, PLEXOSDatafile}:
+        records = []
+        for membership in memberships:
+            if not membership.parent_object or not membership.child_object:
                 continue
 
-            for child_object in self.system.get_components(component_type):
-                # Get all memberships attached to this component (child)
-                memberships = self.system.get_supplemental_attributes_with_component(
-                    child_object, PLEXOSMembership
-                )
+            parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(membership.parent_object))
+            child_class = PLEXOS_TYPE_MAP_INVERTED.get(type(membership.child_object))
 
-                for membership in memberships:
-                    if not membership.parent_object:
-                        continue
+            if not parent_class or not child_class or not membership.collection:
+                continue
 
-                    # Skip System memberships (already created by add_objects)
-                    if membership.parent_object.name == "System":
-                        continue
+            if parent_class in (ClassEnum.Model, ClassEnum.Horizon) or child_class in (
+                ClassEnum.Model,
+                ClassEnum.Horizon,
+            ):
+                continue
 
-                    parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(membership.parent_object))
-                    child_class = PLEXOS_TYPE_MAP_INVERTED.get(cast(type[PLEXOSObject], type(child_object)))
+            parent_object_id = self.db.get_object_id(parent_class, membership.parent_object.name)
+            child_object_id = self.db.get_object_id(child_class, membership.child_object.name)
 
-                    if not parent_class or not child_class:
-                        continue
+            record = {
+                "parent_class_id": self.db.get_class_id(parent_class),
+                "parent_object_id": parent_object_id,
+                "collection_id": self.db.get_collection_id(
+                    membership.collection,
+                    parent_class_enum=parent_class,
+                    child_class_enum=child_class,
+                ),
+                "child_class_id": self.db.get_class_id(child_class),
+                "child_object_id": child_object_id,
+            }
+            records.append(record)
 
-                    # Skip memberships without collection
-                    if not membership.collection:
-                        continue
+        if not records:
+            logger.warning("No valid membership records to add")
+            return
 
-                    try:
-                        parent_object_id = self.db.get_object_id(parent_class, membership.parent_object.name)
-                        child_object_id = self.db.get_object_id(child_class, child_object.name)
-
-                        record = {
-                            "parent_class_id": self.db.get_class_id(parent_class),
-                            "parent_object_id": parent_object_id,
-                            "collection_id": self.db.get_collection_id(
-                                membership.collection,
-                                parent_class_enum=parent_class,
-                                child_class_enum=child_class,
-                            ),
-                            "child_class_id": self.db.get_class_id(child_class),
-                            "child_object_id": child_object_id,
-                        }
-
-                        self.db.add_memberships_from_records([record])
-                        added_count += 1
-                    except Exception as e:
-                        logger.debug(
-                            f"Failed to add membership {membership.parent_object.name} -> {child_object.name}: {e}"
-                        )
-                        continue
-
-        if added_count > 0:
-            logger.info(f"Added {added_count} memberships")
-        else:
-            logger.warning("No memberships were added")
+        self.db.add_memberships_from_records(records)
+        logger.info(f"Added {len(records)} memberships")
 
     def _sync_datafile_objects(self, csv_filepaths: list[Path]) -> None:
         """Create or update PLEXOSDatafile objects for exported CSVs."""

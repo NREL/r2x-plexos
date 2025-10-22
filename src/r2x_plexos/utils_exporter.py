@@ -8,12 +8,14 @@ from typing import Any
 from infrasys import System
 from infrasys.time_series_models import SingleTimeSeries
 
+from r2x_core import Ok, Result
 from r2x_plexos.config import PLEXOSConfig
+from r2x_plexos.models.component import PLEXOSObject
 
 
-def get_component_category(component: Any) -> str | None:
+def get_component_category(component: PLEXOSObject) -> str | None:
     """Get the category of a component if it has one."""
-    return component.category if hasattr(component, "category") else None
+    return component.category if hasattr(component, "category") else "-"
 
 
 def get_output_directory(config: PLEXOSConfig, system: System) -> Path:
@@ -48,7 +50,7 @@ def format_datetime(dt: datetime) -> str:
 def export_time_series_csv(
     filepath: Path,
     time_series_data: list[tuple[str, SingleTimeSeries]],
-) -> None:
+) -> Result[None, Exception]:
     """Export time series to CSV in DateTime,Component format."""
     if not time_series_data:
         raise ValueError("No time series data provided")
@@ -74,3 +76,5 @@ def export_time_series_csv(
         for i, dt in enumerate(datetime_values):
             row = [format_datetime(dt)] + [ts.data[i] for _, ts in time_series_data]
             writer.writerow(row)
+
+    return Ok(None)

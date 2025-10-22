@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 pytest_plugins = [
-    "fixtures.plexos_xml_examples",
+    "fixtures.example_dbs",
     "fixtures.data_files",
 ]
 

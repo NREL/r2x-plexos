@@ -1034,7 +1034,7 @@ class PLEXOSParser(BaseParser):
                     base_value = ts.data[0] if len(set(ts.data)) == 1 else max(ts.data)
                     result_value = base_value * variable_constant_value
 
-                    logger.info(
+                    logger.debug(
                         f"Applying variable '{variable_name}' ({variable_constant_value}) to {ref.component_name}.{ref.field_name}: {base_value} x {variable_constant_value} = {result_value}"
                     )
 

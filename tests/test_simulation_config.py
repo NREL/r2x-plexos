@@ -248,7 +248,7 @@ def test_simulation_config_examples():
 
     transmission = PLEXOSTransmission.example()
     assert transmission.name == "Transmission_Example"
-    assert transmission.opf_method == 1
+    assert transmission.of_method == 1
 
     diagnostic = PLEXOSDiagnostic.example()
     assert diagnostic.name == "Diagnostic_Example"

@@ -27,6 +27,16 @@ from .region import PLEXOSRegion
 from .registry import PLEXOSComponentRegistry
 from .reserve import PLEXOSReserve
 from .scenario import PLEXOSScenario
+from .simulation_config import (
+    PLEXOSPASA,
+    PLEXOSDiagnostic,
+    PLEXOSMTSchedule,
+    PLEXOSPerformance,
+    PLEXOSProduction,
+    PLEXOSReport,
+    PLEXOSSTSchedule,
+    PLEXOSTransmission,
+)
 from .storage import PLEXOSStorage
 from .timeslice import PLEXOSTimeslice
 from .transformers import PLEXOSTransformer
@@ -35,28 +45,36 @@ from .variable import PLEXOSVariable
 from .zone import PLEXOSZone
 
 __all__ = [
+    "PLEXOSPASA",
     "CollectionProperties",
     "PLEXOSBattery",
     "PLEXOSComponentRegistry",
     "PLEXOSDatafile",
+    "PLEXOSDiagnostic",
     "PLEXOSFuel",
     "PLEXOSGenerator",
     "PLEXOSHorizon",
     "PLEXOSInterface",
     "PLEXOSLine",
+    "PLEXOSMTSchedule",
     "PLEXOSMembership",
     "PLEXOSModel",
     "PLEXOSNode",
     "PLEXOSObject",
+    "PLEXOSPerformance",
+    "PLEXOSProduction",
     "PLEXOSProperty",
     "PLEXOSPropertyValue",
     "PLEXOSRegion",
+    "PLEXOSReport",
     "PLEXOSReserve",
     "PLEXOSRow",
+    "PLEXOSSTSchedule",
     "PLEXOSScenario",
     "PLEXOSStorage",
     "PLEXOSTimeslice",
     "PLEXOSTransformer",
+    "PLEXOSTransmission",
     "PLEXOSVariable",
     "PLEXOSZone",
     "PropertySpecification",

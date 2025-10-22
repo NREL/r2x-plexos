@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from loguru import logger
 from plexosdb import ClassEnum, CollectionEnum, PlexosDB
 
+from r2x_core import Err, Ok, Result
+
 
 def get_collection_name(db: PlexosDB, collection_id: int) -> str | None:
     """Get collection name from collection ID.
@@ -96,6 +98,56 @@ def ole_date_to_datetime(ole_date: float) -> datetime:
     """
     ole_epoch = datetime(1899, 12, 30, 0, 0, 0)
     return ole_epoch + timedelta(days=ole_date)
+
+
+def validate_simulation_attribute(
+    db: PlexosDB,
+    class_enum: ClassEnum,
+    attribute_name: str,
+) -> Result[None, str]:
+    """
+    Validate that an attribute name is valid for a simulation class.
+
+    Uses db.list_attributes() to retrieve the valid attribute names for the
+    specified class and checks if the given attribute name is in that list.
+
+    Parameters
+    ----------
+    db : PlexosDB
+        PlexosDB instance to validate against
+    class_enum : ClassEnum
+        The simulation class enum (e.g., ClassEnum.Performance)
+    attribute_name : str
+        The attribute name to validate
+
+    Returns
+    -------
+    Result[None, str]
+        Ok(None): If the attribute is valid
+        Err(str): Error message with details if attribute is invalid
+
+    Examples
+    --------
+    >>> result = validate_simulation_attribute(db, ClassEnum.Performance, "SOLVER")
+    >>> assert result.is_ok()
+    >>> result = validate_simulation_attribute(db, ClassEnum.Performance, "InvalidAttr")
+    >>> assert result.is_err()
+    """
+    try:
+        valid_attrs = db.list_attributes(class_enum)
+        if attribute_name in valid_attrs:
+            return Ok(None)
+        else:
+            # Show first 5 valid attributes as a hint
+            hint = ", ".join(valid_attrs[:5])
+            if len(valid_attrs) > 5:
+                hint += f"... ({len(valid_attrs)} total)"
+            return Err(
+                f"Invalid attribute '{attribute_name}' for {class_enum.name}. "
+                f"Valid attributes include: {hint}"
+            )
+    except Exception as e:
+        return Err(f"Failed to validate attribute: {e!s}")
 
 
 def resolve_horizon_for_model(db: PlexosDB, model_name: str) -> tuple[datetime, datetime] | None:

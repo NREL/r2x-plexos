@@ -1,10 +1,5 @@
 """Tests for multi-band property support."""
 
-from pathlib import Path
-
-import pytest
-from plexosdb import ClassEnum, CollectionEnum, PlexosDB
-
 from r2x_core import DataFile, DataStore
 from r2x_plexos import PLEXOSConfig, PLEXOSParser, PLEXOSPropertyValue, scenario_priority
 from r2x_plexos.models.generator import PLEXOSGenerator
@@ -93,55 +88,31 @@ def test_has_bands_method():
     assert default_prop.has_bands() is False
 
 
-@pytest.fixture
-def xml_with_multiband_generator(tmp_path):
-    """Create XML with a generator that has multi-band Heat Rate property."""
-    db: PlexosDB = PlexosDB.from_xml(Path("tests/data/5_bus_system_variables.xml"))
+def test_parser_multiband_heat_rate(db_thermal_gen_multiband, tmp_path):
+    db = db_thermal_gen_multiband
 
-    generator_name = "ThermalGen"
-    db.add_object(ClassEnum.Generator, generator_name, collection_enum=CollectionEnum.Generators)
-
-    heat_rate_values = [50.0, 100.0, 200.0, 400.0, 800.0]
-    for band_num, heat_rate_value in enumerate(heat_rate_values, start=1):
-        db.add_property(
-            ClassEnum.Generator,
-            generator_name,
-            "Heat Rate",
-            value=heat_rate_value,
-            band=band_num,
-            collection_enum=CollectionEnum.Generators,
-        )
-
-    xml_path = tmp_path / "multiband_generator.xml"
+    xml_path = tmp_path / "multiband.xml"
     db.to_xml(xml_path)
-    return xml_path
 
-
-def test_parser_multiband_heat_rate(xml_with_multiband_generator, tmp_path):
-    """Test that parser correctly handles multi-band Heat Rate from XML."""
     config = PLEXOSConfig(model_name="Base", reference_year=2024)
-    data_file = DataFile(name="xml_file", fpath=xml_with_multiband_generator)
+    data_file = DataFile(name="xml_file", fpath=xml_path)
     store = DataStore(folder=tmp_path)
     store.add_data_file(data_file)
 
     parser = PLEXOSParser(config, store)
     system = parser.build_system()
 
-    gen = system.get_component(PLEXOSGenerator, "ThermalGen")
-    assert gen is not None, "ThermalGen should exist"
+    gen = system.get_component(PLEXOSGenerator, "thermal-01")
+    assert gen is not None
 
     heat_rate_prop = gen.get_property_value("heat_rate")
-    assert heat_rate_prop is not None, "heat_rate property should exist"
-    assert heat_rate_prop.has_bands() is True, "heat_rate should have multiple bands"
-    assert heat_rate_prop.get_bands() == [1, 2, 3, 4, 5], (
-        f"Expected 5 bands, got {heat_rate_prop.get_bands()}"
-    )
+    assert heat_rate_prop is not None
+    assert heat_rate_prop.has_bands() is True
+    assert heat_rate_prop.get_bands() == [1, 2, 3]
 
     result = gen.heat_rate
-    assert isinstance(result, dict), f"Expected dict, got {type(result)}"
-    assert result == {1: 50.0, 2: 100.0, 3: 200.0, 4: 400.0, 5: 800.0}, (
-        f"Expected all 5 bands with correct values, got {result}"
-    )
+    assert isinstance(result, dict)
+    assert result == {1: 10.5, 2: 11.5, 3: 12.5}
 
 
 def test_multiband_with_scenario_priority_no_scenarios():

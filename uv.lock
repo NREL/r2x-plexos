@@ -960,37 +960,14 @@ wheels = [
 
 [[package]]
 name = "plexosdb"
-source = { editable = "../plexosdb/dev" }
+version = "1.1.3"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "loguru" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "loguru", specifier = "~=0.7.2" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "bump2version" },
-    { name = "ipython" },
-    { name = "mypy", specifier = "~=1.11.0" },
-    { name = "pre-commit" },
-    { name = "pudb" },
-    { name = "pytest" },
-    { name = "pytest-benchmark", specifier = ">=5.1.0" },
-    { name = "pytest-cov" },
-    { name = "ruff", specifier = "~=0.5.2" },
-]
-docs = [
-    { name = "furo" },
-    { name = "ghp-import" },
-    { name = "myst-parser" },
-    { name = "sphinx-autobuild", specifier = ">=2024.10.3" },
-    { name = "sphinx-book-theme" },
-    { name = "sphinx-copybutton" },
-    { name = "sphinx-multiversion", specifier = ">=0.2.4" },
-    { name = "sphinx-tabs" },
-    { name = "sphinxcontrib-mermaid" },
-    { name = "sphinxcontrib-versioning", specifier = ">=2.2.1" },
+sdist = { url = "https://files.pythonhosted.org/packages/c1/6e/487de0c2101b2f86ed36af508ad2551b257f93f58a690b1f7a23971e40c2/plexosdb-1.1.3.tar.gz", hash = "sha256:7bb2ae47ad1b9c84117151560bb67f264d80087baec388c065d14d952c8b2a8e", size = 133348, upload-time = "2025-10-19T19:05:08.119Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/bd/b7f0715c2128d37c9ff3acc901d9bfd5a8a0f6d8a52122bafed3a3a851ca/plexosdb-1.1.3-py3-none-any.whl", hash = "sha256:ad2e769eeb636441faeae541250d57f8255310508cc27aab99ae6c7c670527ea", size = 48691, upload-time = "2025-10-19T19:05:06.738Z" },
 ]
 
 [[package]]
@@ -1291,6 +1268,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-mock"
+version = "3.15.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/68/14/eb014d26be205d38ad5ad20d9a80f7d201472e08167f0bb4361e251084a9/pytest_mock-3.15.1.tar.gz", hash = "sha256:1849a238f6f396da19762269de72cb1814ab44416fa73a8686deac10b0d87a0f", size = 34036, upload-time = "2025-09-16T16:37:27.081Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5a/cc/06253936f4a7fa2e0f48dfe6d851d9c56df896a9ab09ac019d70b760619c/pytest_mock-3.15.1-py3-none-any.whl", hash = "sha256:0a25e2eb88fe5168d535041d09a4529a188176ae608a6d249ee65abc0949630d", size = 10095, upload-time = "2025-09-16T16:37:25.734Z" },
+]
+
+[[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }
@@ -1368,7 +1357,7 @@ wheels = [
 
 [[package]]
 name = "r2x-core"
-version = "0.0.9"
+version = "0.0.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -1378,9 +1367,9 @@ dependencies = [
     { name = "polars" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/62/d6f5a9c9a7fd7390f7a798896912164fcb617b9bd2cb2bb95932c17657ab/r2x_core-0.0.9.tar.gz", hash = "sha256:53e8024eac6c3bf109e9f6f0956693f2fab8fb9738d11d217f3643cd5c1938d1", size = 56974, upload-time = "2025-10-15T18:40:30.02Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/9e/9d8973e701c383ef9284d68ee0a87366355fab224828954d106ef5dbca6e/r2x_core-0.0.10.tar.gz", hash = "sha256:d16df9fb7ff299c90fc61fcef167072830787609ad9b71f0f443b6f9bc09790c", size = 58351, upload-time = "2025-10-21T17:53:05.504Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/bd/7ac922886f83d738174d7de7785a04f387b86763704fe7270fbe4b0e32d5/r2x_core-0.0.9-py3-none-any.whl", hash = "sha256:0466b4f0d858a815a4bff7fdf4dd8b7862e1aef53701f6b1ce598d0b0188012c", size = 67954, upload-time = "2025-10-15T18:40:28.6Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/bb/b9eb5e8753ae16e6024bbbf3f7ab3e06f675293b5a82c2ab5407c9988695/r2x_core-0.0.10-py3-none-any.whl", hash = "sha256:f1d7139d2ab2f808b98bcf0433521a70d55a5241f81dc7851353fd0fedced55b", size = 68847, upload-time = "2025-10-21T17:53:04.295Z" },
 ]
 
 [[package]]
@@ -1399,6 +1388,7 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-coverage" },
+    { name = "pytest-mock" },
     { name = "ruff" },
 ]
 docs = [
@@ -1415,8 +1405,8 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "plexosdb", editable = "../plexosdb/dev" },
-    { name = "r2x-core", specifier = "~=0.0.9" },
+    { name = "plexosdb", specifier = ">=1.1.3" },
+    { name = "r2x-core", specifier = "~=0.0.10" },
 ]
 
 [package.metadata.requires-dev]
@@ -1426,6 +1416,7 @@ dev = [
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-coverage", specifier = ">=0.0" },
+    { name = "pytest-mock", specifier = ">=3.15.1" },
     { name = "ruff", specifier = ">=0.11.5" },
 ]
 docs = [

@@ -34,8 +34,10 @@ def parser_basic_mutable(data_folder) -> PLEXOSParser:
 
 @pytest.fixture(scope="module")
 def parser_with_timeseries_dir(data_folder) -> PLEXOSParser:
-    """Create a parser with timeseries_dir configured."""
-    config = PLEXOSConfig(model_name="Base", timeseries_dir="timeseries", reference_year=2023)
+    timeseries_path = data_folder / "timeseries"
+    timeseries_path.mkdir(exist_ok=True)
+
+    config = PLEXOSConfig(model_name="Base", timeseries_dir=str(timeseries_path), reference_year=2023)
     data_file = DataFile(name="xml_file", glob="*.xml")
     store = DataStore(folder=data_folder)
     store.add_data_file(data_file)

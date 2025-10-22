@@ -114,6 +114,7 @@ class PLEXOSParser(BaseParser):
         # PropertyRecord from plexosdb.iterate_properties(), stored as dict for flexibility
         self._collection_properties_cache: dict[int, list[dict[str, Any]]] = {}
 
+        self.db = db
         if not db:
             # NOTE: We should change either plexosdb db to take xmltree or an
             # easier way to get the fpath of resolved globs.
@@ -127,6 +128,10 @@ class PLEXOSParser(BaseParser):
 
     def validate_inputs(self) -> None:
         """Validate input data before parsing."""
+        if self.db is None:
+            msg = "Database not initialized"
+            raise ValueError(msg)
+
         logger.info("Selecting model={}", self.model_name)
         model_id = self.db.get_object_id(ClassEnum.Model, self.model_name)
         scenario_results = self.db._db.query(SCENARIO_ORDER, (model_id,))
@@ -144,11 +149,11 @@ class PLEXOSParser(BaseParser):
             horizon_start, horizon_end = horizon_range
             # Validate that horizon year is reasonable relative to reference year
             # If horizon is more than 5 years before reference year, ignore it
-            if self.config.reference_year is not None and horizon_start.year < self.config.reference_year - 5:
+            if self.config.horizon_year is not None and horizon_start.year < self.config.horizon_year - 5:
                 logger.warning(
                     "Horizon year {} is too far before reference year {}, ignoring horizon",
                     horizon_start.year,
-                    self.config.reference_year,
+                    self.config.horizon_year,
                 )
             else:
                 self._horizon_start, self._horizon_end = horizon_start, horizon_end
@@ -165,6 +170,10 @@ class PLEXOSParser(BaseParser):
 
     def build_system_components(self) -> None:
         """Create PLEXOS components."""
+        if self.db is None:
+            msg = "Database not initialized"
+            raise ValueError(msg)
+
         logger.info("Building PLEXOS system components...")
 
         logger.trace("Querying objects from PLEXOS database...")
@@ -207,7 +216,7 @@ class PLEXOSParser(BaseParser):
         """Attach time series data to components."""
         logger.info("Building time series data...")
 
-        reference_year = self.config.reference_year or 2024
+        reference_year = self.config.horizon_year or 2024
         horizon = get_horizon()
 
         # Get horizon datetime objects if available
@@ -314,6 +323,7 @@ class PLEXOSParser(BaseParser):
             membership = PLEXOSMembership(
                 membership_id=membership_id,
                 parent_object=parent_object,
+                child_object=child_object,
                 collection=collection_enum,
             )
 
@@ -321,6 +331,10 @@ class PLEXOSParser(BaseParser):
 
             self.system.add_supplemental_attribute(
                 child_object,
+                membership,
+            )
+            self.system.add_supplemental_attribute(
+                parent_object,
                 membership,
             )
 
@@ -772,7 +786,7 @@ class PLEXOSParser(BaseParser):
 
         if is_constant:
             single_value = float(next(iter(unique_values)))
-            logger.info(f"Updating constant value for {ref.component_name}.{ref.field_name}: {single_value}")
+            logger.debug(f"Updating constant value for {ref.component_name}.{ref.field_name}: {single_value}")
 
             if hasattr(component, ref.field_name):
                 prop_value = component.get_property_value(ref.field_name)
@@ -831,7 +845,7 @@ class PLEXOSParser(BaseParser):
         if is_constant:
             unique_values = set(ts.data)
             single_value = float(next(iter(unique_values)))
-            logger.info(
+            logger.debug(
                 f"Updating constant collection property value for {ref.component_name}.{ref.field_name}: {single_value}"
             )
 
@@ -888,7 +902,7 @@ class PLEXOSParser(BaseParser):
         cache_key: tuple[UUID, str],
     ) -> None:
         """Handle variables without datafiles (constant values)."""
-        logger.info(
+        logger.debug(
             f"Applying constant variable '{variable_name}' ({variable_value}) to {ref.component_name}.{ref.field_name}"
         )
 
@@ -1020,7 +1034,7 @@ class PLEXOSParser(BaseParser):
                     base_value = ts.data[0] if len(set(ts.data)) == 1 else max(ts.data)
                     result_value = base_value * variable_constant_value
 
-                    logger.info(
+                    logger.debug(
                         f"Applying variable '{variable_name}' ({variable_constant_value}) to {ref.component_name}.{ref.field_name}: {base_value} x {variable_constant_value} = {result_value}"
                     )
 

@@ -60,7 +60,7 @@ def year_daily_hour(tmp_path: Path):
 
 
 @pytest.fixture
-def xml_with_multi_weather(tmp_path, year_daily_hour):
+def xml_with_multi_weather_chrono(tmp_path, year_daily_hour):
     """Create a test XML with a generator that has max capacity referencing a variable."""
     db: PlexosDB = PlexosDB.from_xml(Path("tests/data/5_bus_system_variables.xml"))
     datafile_name = "LoadProfiles"
@@ -113,9 +113,9 @@ def xml_with_multi_weather(tmp_path, year_daily_hour):
     return xml_path
 
 
-def test_multi_band_datafile(tmp_path, xml_with_multi_weather, caplog):
+def test_multi_band_datafile(tmp_path, xml_with_multi_weather_chrono, caplog):
     config = PLEXOSConfig(model_name="TestModel", reference_year=2026)
-    data_file = DataFile(name="xml_file", fpath=xml_with_multi_weather)
+    data_file = DataFile(name="xml_file", fpath=xml_with_multi_weather_chrono)
     store = DataStore(folder=tmp_path)
     store.add_data_file(data_file)
 

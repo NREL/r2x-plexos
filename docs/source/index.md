@@ -11,11 +11,32 @@ references/index
 
 # R2X PLEXOS Documentation
 
-R2X PLEXOS is an R2X Core plugin for parsing PLEXOS power system model data.
+R2X PLEXOS is an R2X Core plugin for parsing and exporting PLEXOS power system models.
 
 ## About R2X PLEXOS
 
-R2X PLEXOS provides a comprehensive parser for PLEXOS model, enabling seamless data exchange with other power system modeling platforms through the R2X Core framework.
+R2X PLEXOS provides comprehensive parser and exporter functionality for PLEXOS models, enabling seamless data exchange with other power system modeling platforms through the R2X Core framework.
+
+**Key Features:**
+- Parse PLEXOS XML files to translate to other R2X supported modeling platforms
+- Export R2X supported models into PLEXOS XML database
+- Round-trip data conversion
+
+## Quick Start
+
+```python
+from pathlib import Path
+from r2x_core import DataFile, DataStore
+from r2x_plexos import PLEXOSParser, PLEXOSConfig
+
+# Parse PLEXOS XML
+config = PLEXOSConfig(model_name="Base", reference_year=2024)
+store = DataStore(folder=Path("data"))
+store.add_data_file(DataFile(name="xml_file", glob="*.xml"))
+
+parser = PLEXOSParser(config, store)
+system = parser.build_system()
+```
 
 ## Documentation Sections
 

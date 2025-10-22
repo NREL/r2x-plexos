@@ -19,4 +19,3 @@ working-with-memberships
 ### Exporting
 - Export R2X systems to PLEXOS XML format
 - Handling memberships
-

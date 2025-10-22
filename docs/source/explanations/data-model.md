@@ -78,4 +78,3 @@ Common membership patterns:
 - Component → Region: Regional assignment
 - Component → Category: Categorization
 - Reserve → Generator: Reserve provision
-

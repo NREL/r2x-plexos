@@ -99,7 +99,7 @@ if system.has_time_series(gen):
 
 ## Skip Validation
 
-Skip Pydantic validation when creating component instances. Useful for performance 
+Skip Pydantic validation when creating component instances. Useful for performance
 optimization or when handling incomplete/legacy data. Use with caution as it bypasses
 type and constraint checking.
 

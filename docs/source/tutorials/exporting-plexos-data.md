@@ -42,7 +42,7 @@ exporter = PLEXOSExporter(config, system)
 
 ## Populating Default Values in exported Database
 
-By default, the exporter excludes properties with default values. However, if the user wishes, they can include properties with default values. Note that this affects the performance when populating the XML database. 
+By default, the exporter excludes properties with default values. However, if the user wishes, they can include properties with default values. Note that this affects the performance when populating the XML database.
 
 ```python
 # Include all properties, even defaults

@@ -59,4 +59,3 @@ The exporter uses Result types for error handling:
 
 - `Ok(None)`: Successful operation
 - `Err(ExporterError)`: Operation failed with error details
-

@@ -2,10 +2,10 @@
   padding-left: 8px;
   }
 
-.autodoc_pydantic_collapsable_json {
+.autodoc_pydantic_collapsible_json {
   cursor: pointer;
   }
 
-.autodoc_pydantic_collapsable_erd {
+.autodoc_pydantic_collapsible_erd {
   cursor: pointer;
   }

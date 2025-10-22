@@ -43,6 +43,7 @@ class PLEXOSExporter(BaseExporter):
         db: PlexosDB | None = None,  # Allow passing existing DB for testing
         **kwargs: Any,
     ) -> None:
+        """Start exporter."""
         self.exclude_defaults = exclude_defaults
         if not exclude_defaults:
             logger.info("Including default values while populating PLEXOS database")
@@ -251,16 +252,17 @@ class PLEXOSExporter(BaseExporter):
 
         logger.debug(f"Found {len(ts_metadata)} time series keys total")
 
-        def grouping_key(item: tuple[Any, Any]) -> tuple[str, tuple[tuple[str, Any], ...]]:
+        def _grouping_key(item: tuple[Any, Any]) -> tuple[str, tuple[tuple[str, Any], ...]]:
+            """Sort by component_type."""
             _component, ts_key = item
             return (ts_key.name, tuple(sorted(ts_key.features.items())))
 
-        ts_metadata_sorted = sorted(ts_metadata, key=grouping_key)
+        ts_metadata_sorted = sorted(ts_metadata, key=_grouping_key)
 
         csv_filepaths: list[Path] = []
         output_dir = get_output_directory(self.config, self.system)
 
-        for group_key, group_items in groupby(ts_metadata_sorted, key=grouping_key):
+        for group_key, group_items in groupby(ts_metadata_sorted, key=_grouping_key):
             field_name, features_tuple = group_key
             metadata_dict = dict(features_tuple)
             group_list = list(group_items)

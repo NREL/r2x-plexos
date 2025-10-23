@@ -57,4 +57,6 @@ print(f"R2X PLEXOS version: {r2x_plexos.__version__}")
 
 ## Next steps
 
-See the [how-to guides](how-tos/index.md) for practical usage examples or check out the [API documentation](references/index.md) for detailed reference information.
+- [Tutorials](tutorials/index.md) - Step-by-step learning guides
+- [How-To Guides](how-tos/index.md) - Task-focused recipes
+- [API Reference](references/index.md) - Complete API documentation

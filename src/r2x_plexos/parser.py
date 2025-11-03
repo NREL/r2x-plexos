@@ -248,6 +248,7 @@ class PLEXOSParser(BaseParser):
 
     def build_system_components(self) -> None:
         """Create PLEXOS components and establish relationships.
+
         This function partitions database properties into main properties (parent_class="System")
         and collection properties (scoped to parent-child relationships). Creates
         components from main properties, then links them via memberships and
@@ -673,8 +674,9 @@ class PLEXOSParser(BaseParser):
         return component
 
     def _process_component_properties(self, component: PLEXOSObject, db_rows: list[dict[str, Any]]) -> None:
-        """Process and attach properties to a component. This function converts property database
-        records to PLEXOSPropertyValue and sets on component field. Detects datafile/variable
+        """Process and attach properties to a component.
+
+        This function converts property database records to PLEXOSPropertyValue and sets on component field. Detects datafile/variable
         references and registers them for deferred time series attachment in build_time_series phase.
 
         Parameters
@@ -718,6 +720,7 @@ class PLEXOSParser(BaseParser):
         self, component: PLEXOSObject, field_name: str, property: PLEXOSPropertyValue
     ) -> None:
         """Register time series reference for later attachment to a property.
+
         Examines property entries for datafile or variable references. For
         datafiles, distinguishes direct CSV paths from datafile component names.
         For variables, extracts first variable name (multi-variable properties
@@ -783,7 +786,7 @@ class PLEXOSParser(BaseParser):
             )
 
     def _resolve_datafile_path(self, datafile_path: str | None) -> Path:
-        """Resolves datafile paths relative to the data store and timeseries directory.
+        """Resolve datafile paths relative to the data store and timeseries directory.
 
         Parameters
         ----------

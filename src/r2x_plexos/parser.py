@@ -54,7 +54,13 @@ SCENARIO_ORDER = files("r2x_plexos.sql").joinpath("scenario_read_order.sql").rea
 
 
 class TimeSeriesSourceType(str, Enum):
-    """Enum for timeseries references."""
+    """Classification of time series data sources in PLEXOS models.
+    
+    DIRECT_DATAFILE : Direct CSV file path reference
+    DATAFILE_COMPONENT : Reference to a PLEXOSDatafile component
+    VARIABLE : Reference to a PLEXOSVariable with profile property
+    NESTED_VARIABLE : Variable reference within another structure
+    """
 
     DIRECT_DATAFILE = "DIRECT_DATAFILE"
     DATAFILE_COMPONENT = "DATAFILE_COMPONENT"
@@ -64,7 +70,37 @@ class TimeSeriesSourceType(str, Enum):
 
 @dataclass
 class TimeSeriesReference:
-    """Reference for time series."""
+    """Reference for time series.
+    
+    Stores information needed to attach time series data to components after
+    all components are created. Supports both main properties and collection
+    properties (tied to specific parent-child memberships).
+    
+    Attributes
+    ----------
+    component_uuid : UUID
+        Target component identifier
+    component_name : str
+        Component name for file column matching
+    field_name : str
+        Property field name (snake_case)
+    source_type : TimeSeriesSourceType
+        Data source classification
+    datafile_path : str, optional
+        Direct CSV file path
+    datafile_component_name : str, optional
+        Name of PLEXOSDatafile component
+    variable_name : str, optional
+        Name of PLEXOSVariable component
+    units : str, optional
+        Property units
+    property_name : str, optional
+        Original PLEXOS property name
+    is_collection_property : bool
+        Whether this is a collection property (default False)
+    membership_id : int, optional
+        Parent-child relationship ID for collection properties
+    """
 
     component_uuid: UUID
     component_name: str
@@ -80,7 +116,23 @@ class TimeSeriesReference:
 
 
 class PLEXOSParser(BaseParser):
-    """PLEXOS parser."""
+    """Parse PLEXOS XML models into r2x-core system representation.
+    
+    Implements a three-phase parsing strategy:
+    1. Component creation with property parsing and time series reference collection
+    2. Time series attachment is deferred until after all components are created, leveraging caching and action application
+    3. Post-processing for system metadata, where metadata such as the system's data format version and description are set in the `post_process_system` method.
+    
+    Key Features
+    ------------
+    - Scenario-aware property resolution using PLEXOS read order
+    - Multi-band time series support for load/generation profiles
+    - Variable-based property modification (multiply, add, subtract operations)
+    - Collection properties tied to parent-child memberships
+    - File parsing cache to avoid redundant CSV reads
+    - Automatic constant detection for single-value time series
+    - Horizon-based time series trimming
+    """
 
     def __init__(
         self,
@@ -92,7 +144,33 @@ class PLEXOSParser(BaseParser):
         skip_validation: bool = False,
         db: PlexosDB | None = None,
     ) -> None:
-        """Initialize PLEXOS parser."""
+        """Initialize PLEXOSParser with configuration and caching infrastructure.
+        
+        Parameters
+        ----------
+        config : PLEXOSConfig
+            Parser configuration including model name and horizon settings
+        data_store : DataStore
+            Data file accessor from r2x-core
+        name : str, optional
+            Parser instance name
+        auto_add_composed_components : bool, default True
+            Whether to automatically add composed components to system
+        skip_validation : bool, default False
+            Skip validation checks during parsing
+        db : PlexosDB, optional
+            Pre-initialized PLEXOS database; if None, created from XML in data_store
+        
+        Notes
+        -----
+        Initializes multiple caches (python dictionaries):
+        - _component_cache: object_id -> PLEXOSObject mapping
+        - _parsed_files_cache: file_path -> parsed data mapping
+        - _datafile_cache: deprecated, for backward compatibility
+        - _membership_cache: membership_id -> PLEXOSMembership mapping
+        - _collection_properties_cache: object_id -> property records mapping
+        - _attached_timeseries: (uuid, field_name) -> bool attachment tracker
+        """
         super().__init__(
             config,
             data_store,
@@ -169,7 +247,23 @@ class PLEXOSParser(BaseParser):
         return
 
     def build_system_components(self) -> None:
-        """Create PLEXOS components."""
+        """Create PLEXOS components and establish relationships.
+        This function partitions database properties into main properties (parent_class="System")
+        and collection properties (scoped to parent-child relationships). Creates
+        components from main properties, then links them via memberships and
+        attaches collection properties to the appropriate relationship contexts.
+        
+        Raises
+        ------
+        ValueError
+            If database is not initialized
+        
+        Notes
+        -----
+        Collection properties are child object properties scoped to a specific
+        parent, stored separately until memberships are resolved. Time series
+        references are registered but not attached during this phase.
+        """
         if self.db is None:
             msg = "Database not initialized"
             raise ValueError(msg)
@@ -213,7 +307,22 @@ class PLEXOSParser(BaseParser):
         return
 
     def build_time_series(self) -> None:
-        """Attach time series data to components."""
+        """Attach time series data using three-stage processing.
+        
+        Threee types of time series references are parsed:
+        
+        1. Direct datafile (CSV paths)
+        2. Datafile component (indirect via PLEXOSDatafile objects)
+        3. Variables (with profile properties and optional bands)
+        
+        Failed attachments are logged but don't halt processing.
+        
+        Notes
+        -----
+        File parsing is cached to avoid redundant reads. Multi-band time series
+        (e.g., load profiles with band_1, band_2) are detected and attached as
+        separate series with band feature tags.
+        """
         logger.info("Building time series data...")
 
         reference_year = self.config.horizon_year or 2024
@@ -281,7 +390,7 @@ class PLEXOSParser(BaseParser):
             logger.warning(f"Failed references (first 5): {failed_names}")
 
     def post_process_system(self) -> None:
-        """Perform post-processing on the built system."""
+        """Set system metadata and log summary statistics."""
         logger.info("Post-processing PLEXOS system...")
 
         self.system.data_format_version = __version__
@@ -293,7 +402,18 @@ class PLEXOSParser(BaseParser):
         logger.info("Post-processing complete")
 
     def _add_memberships(self) -> None:
-        """Add membership relationships between PLEXOS components."""
+        """Build parent-child relationships from PLEXOS membership table.
+        
+        Queries t_membership table, excluding System class memberships. For
+        each membership, resolves collection enum from collection_id and creates
+        PLEXOSMembership supplemental attribute linking parent and child objects.
+        
+        Notes
+        -----
+        Memberships represent the graph structure of PLEXOS models (e.g., 
+        Generator -> Node, Generator -> Region). Both parent and child receive
+        the membership attribute for bidirectional traversal.
+        """
         assert self.db is not None
 
         system_class_id = self.db.get_class_id(ClassEnum.System)
@@ -339,7 +459,28 @@ class PLEXOSParser(BaseParser):
             )
 
     def _add_collection_properties(self) -> None:
-        """Add collection properties as supplemental attributes."""
+        """Attach collection properties as supplemental attributes.
+        
+        Collection properties are child object properties scoped to a specific
+        parent relationship. 
+        
+        Algorithm:
+        
+        For each object_id in collection properties cache
+        1. Retrieve all memberships for that component
+        2. Group properties by (parent_class, parent_id)
+        3. Match each group to a membership by parent_object.object_id
+        4. Create CollectionProperties supplemental attribute
+        
+        Registers time series references for properties with datafile or
+        variable values.
+        
+        Notes
+        -----
+        A child component can have different property values for each parent
+        it belongs to. For example, a Generator's "Max Capacity" might differ
+        depending on which Region membership is active.
+        """
         for object_id, coll_props_list in self._collection_properties_cache.items():
             component = self._component_cache.get(object_id)
             if not component:
@@ -409,7 +550,23 @@ class PLEXOSParser(BaseParser):
     def _register_collection_property_time_series_reference(
         self, component: PLEXOSObject, field_name: str, property: PLEXOSPropertyValue, membership_id: int
     ) -> None:
-        """Register time series reference for collection properties."""
+        """Register time series reference for collection properties.
+        
+        Similar to _register_time_series_reference but includes membership_id
+        to identify the specific parent-child relationship context. Supports
+        direct CSV paths, datafile components, and variables.
+        
+        Parameters
+        ----------
+        component : PLEXOSObject
+            Target component
+        field_name : str
+            Property field name (snake_case)
+        property : PLEXOSPropertyValue
+            Property value with datafile or variable reference
+        membership_id : int
+            Parent-child relationship identifier
+        """
         if property.has_datafile():
             for row in property.entries.values():
                 name = row.datafile_name or (
@@ -461,7 +618,26 @@ class PLEXOSParser(BaseParser):
             )
 
     def _create_component(self, obj_type: str, db_rows: list[dict[str, Any]]) -> PLEXOSObject | None:
-        """Create a PLEXOS component from database rows."""
+        """Create a PLEXOS component from database rows.
+        
+        Parameters
+        ----------
+        obj_type : str
+            PLEXOS class name
+        db_rows : list of dict
+            Property records for this object, all with same object_id
+        
+        Returns
+        -------
+        PLEXOSObject or None
+            Component instance or None if class is unsupported/invalid
+        
+        Notes
+        -----
+        Uses model_construct() for fast instantiation. Assumes data is prevalidated.
+        Skips DataFile, Variable, and Timeslice components for time series
+        registration as they define data rather than consume it.
+        """
         if not db_rows:
             return None
 
@@ -497,7 +673,21 @@ class PLEXOSParser(BaseParser):
         return component
 
     def _process_component_properties(self, component: PLEXOSObject, db_rows: list[dict[str, Any]]) -> None:
-        """Process and attach properties to a component."""
+        """Process and attach properties to a component. This function converts property database
+        records to PLEXOSPropertyValue and sets on component field. Detects datafile/variable
+        references and registers them for deferred time series attachment in build_time_series phase.
+
+        Parameters
+        ----------
+        component : PLEXOSObject
+            Target component
+        db_rows : list of dict
+            Property records for this component
+        
+        Notes
+        -----
+        Skips time series registration for DataFile, Variable, and Timeslice component types.
+        """
         for prop_name, rows in itertools.groupby(db_rows, key=itemgetter("property")):
             if prop_name is None:
                 continue
@@ -527,7 +717,27 @@ class PLEXOSParser(BaseParser):
     def _register_time_series_reference(
         self, component: PLEXOSObject, field_name: str, property: PLEXOSPropertyValue
     ) -> None:
-        """Register time series reference for later attachment."""
+        """Register time series reference for later attachment to a property.
+        Examines property entries for datafile or variable references. For
+        datafiles, distinguishes direct CSV paths from datafile component names.
+        For variables, extracts first variable name (multi-variable properties
+        use first entry).
+        
+        Parameters
+        ----------
+        component : PLEXOSObject
+            Target component
+        field_name : str
+            Property field name (snake_case)
+        property : PLEXOSPropertyValue
+            Property value with potential time series reference
+        
+        Notes
+        -----
+        Uses first matching entry only. Properties with multiple bands or
+        scenarios have multiple entries, but attachment logic handles this
+        during build_time_series phase.
+        """
         if property.has_datafile():
             for row in property.entries.values():
                 name = row.datafile_name or (
@@ -573,7 +783,28 @@ class PLEXOSParser(BaseParser):
             )
 
     def _resolve_datafile_path(self, datafile_path: str | None) -> Path:
-        """Resolve datafile path relative to data store and timeseries dir."""
+        """Resolves datafile paths relative to the data store and timeseries directory.
+        
+        Parameters
+        ----------
+        datafile_path : str or None
+            Relative path from PLEXOS model (backslashes normalized)
+        
+        Returns
+        -------
+        Path
+            Absolute path: data_store.folder / timeseries_dir / datafile_path
+        
+        Raises
+        ------
+        ValueError
+            If datafile_path is None or empty
+        
+        Notes
+        -----
+        PLEXOS uses backslashes in paths regardless of OS. Normalized to forward
+        slashes before joining with base path.
+        """
         if not datafile_path:
             raise ValueError("No datafile path provided")
 
@@ -584,10 +815,29 @@ class PLEXOSParser(BaseParser):
         return base_path / normalized_path
 
     def _get_variable_profile_value(self, variable_id: int, variable_name: str) -> float:
-        """Get the profile value from a variable component using scenario priority.
-
-        Note: Variables may have properties in different scenarios than the current model.
-        We check all entries to find a profile value, respecting scenario priority if available.
+        """Extract profile value from variable respecting scenario priority.
+        
+        Variables may have profile properties in scenarios not directly related
+        to the current model. Iterates all entries to find a numeric value,
+        using scenario priority if multiple values exist.
+        
+        Parameters
+        ----------
+        variable_id : int
+            Variable object ID for component cache lookup
+        variable_name : str
+            Variable name for error messages
+        
+        Returns
+        -------
+        float
+            Profile value
+        
+        Raises
+        ------
+        ValueError
+            If variable not found, not a Variable type, has no profile property,
+            or profile property has no numeric value in any entry
         """
         variable = self._component_cache.get(variable_id)
         if not variable:
@@ -618,7 +868,41 @@ class PLEXOSParser(BaseParser):
         timeslices: list[Any] | None = None,
         horizon_datetime: tuple[datetime, datetime] | None = None,
     ) -> Any:
-        """Get time series from cache or parse from file. Returns float for constant value files."""
+        """Retrieve cached or parse CSV file, returning time series or float for constant value files.
+        
+        Uses file-level caching to avoid redundant parsing. Supports single-entry
+        fallback when component name not found but file has exactly one column.
+        Trims time series to horizon if configured.
+        
+        Parameters
+        ----------
+        file_path : str
+            Absolute path to CSV file
+        component_name : str
+            Column name to extract
+        reference_year : int
+            Year for timestamp initialization if not in data
+        timeslices : list, optional
+            PLEXOS timeslice definitions for data expansion
+        horizon_datetime : tuple of datetime, optional
+            (start, end) for time series trimming
+        
+        Returns
+        -------
+        SingleTimeSeries or float
+            Time series data or constant value
+        
+        Raises
+        ------
+        ValueError
+            If component name not found and file has multiple columns,
+            or if file contains no data for requested year
+        
+        Notes
+        -----
+        Extraction uses horizon start year if available, otherwise reference_year.
+        Float returns indicate constant-value files (single row/column with one value).
+        """
         if file_path in self._parsed_files_cache:
             logger.debug(f"Using cached file parse: {file_path}")
             component_map = self._parsed_files_cache[file_path]
@@ -689,7 +973,29 @@ class PLEXOSParser(BaseParser):
         horizon: tuple[str, str] | None,
         horizon_datetime: tuple[datetime, datetime] | None = None,
     ) -> None:
-        """Attach time series from direct CSV file path."""
+        """Attach time series from direct CSV file path.
+        
+        Parses CSV file and applies variable actions if property has associated
+        variable. Distinguishes between float constants (single-value files) and
+        multi-valued time series. Updates property entries with computed values.
+        ----------
+        ref : TimeSeriesReference
+            Attachment metadata
+        reference_year : int
+            Fallback year for timestamp initialization
+        timeslices : list, optional
+            PLEXOS timeslice definitions
+        horizon : tuple of str, optional
+            (start_iso, end_iso) for time series feature tagging
+        horizon_datetime : tuple of datetime, optional
+            (start, end) for trimming
+        
+        Notes
+        -----
+        Applies variable actions when property entry specifies an action. The action
+        modifies the datafile values using the variable's profile value. For constants,
+        applies once; for time series, applies element-wise.
+        """
         cache_key = (ref.component_uuid, ref.field_name)
         if cache_key in self._attached_timeseries:
             return
@@ -776,7 +1082,31 @@ class PLEXOSParser(BaseParser):
         ts: SingleTimeSeries,
         horizon: tuple[str, str] | None,
     ) -> None:
-        """Attach time series or update property value if constant."""
+        """Attach time series or update property value if constant.
+        
+        Routes collection properties to separate handler. For main properties,
+        if time series is constant (all identical values), updates property entry
+        with that value. For non-constant series, attaches to component and updates
+        property entry with max value for capacity tracking.
+        
+        Parameters
+        ----------
+        component : PLEXOSObject
+            Target component
+        ref : TimeSeriesReference
+            Attachment metadata including collection property flag
+        ts : SingleTimeSeries
+            Time series data (may be constant or varying)
+        horizon : tuple of str, optional
+            (start_iso, end_iso) for feature tagging on attached series. 
+            Assumes ISO format.
+        
+        Notes
+        -----
+        Property entries are always updated: with the constant value if series
+        is constant, or with max value if series varies. Collection properties
+        are delegated to _attach_collection_property_timeseries().
+        """
         unique_values = set(ts.data)
         is_constant = len(unique_values) == 1
 

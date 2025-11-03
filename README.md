@@ -12,7 +12,7 @@
 > [![Docstring Coverage](https://nrel.github.io/r2x-plexos/_static/docstr_coverage_badge.svg)](https://nrel.github.io/r2x-plexos/)
 
 
-R2X PLEXOS plugin for parsing and exporting PLEXOS power system models. 
+R2X PLEXOS plugin for parsing and exporting PLEXOS power system models.
 
 ## Quick Start
 

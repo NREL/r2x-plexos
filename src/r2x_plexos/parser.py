@@ -120,8 +120,8 @@ class PLEXOSParser(BaseParser):
     
     Implements a three-phase parsing strategy:
     1. Component creation with property parsing and time series reference collection
-    2. Time series attachment is deferred until after all components are created, leveraging caching and action application
-    3. Post-processing for system metadata, where metadata such as the system's data format version and description are set in the `post_process_system` method.
+    2. Time series attachment from collected references
+    3. Post-processing to set system metadata
     
     Key Features
     ------------

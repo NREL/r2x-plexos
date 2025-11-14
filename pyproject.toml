@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11, <3.14"
 dependencies = [
     "plexosdb>=1.1.3",
-    "r2x-core~=0.0.10",
+    "r2x-core>=0.1.1,<1.0.0",
 ]
 keywords=["PLEXOS"]
 classifiers = [
@@ -56,7 +56,7 @@ docs = [
 ]
 
 [project.entry-points.r2x_plugin]
-plexos = "r2x_plexos:register_plugin"
+plexos = "r2x_plexos.plugins:manifest"
 
 [project.urls]
 Homepage = "https://github.com/NREL/r2x-plexos"

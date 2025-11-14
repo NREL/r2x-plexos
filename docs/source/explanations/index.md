@@ -8,6 +8,7 @@ Understanding the architecture and design of r2x-plexos.
 parser-architecture
 exporter-architecture
 data-model
+supplemental-attributes
 ```
 
 ## Overview

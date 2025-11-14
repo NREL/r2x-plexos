@@ -17,8 +17,8 @@ def parser_basic(data_folder) -> PLEXOSParser:
     """Create a basic parser instance for testing (read-only tests)."""
     config = PLEXOSConfig(model_name="Base", timeseries_dir=None, reference_year=2023)
     data_file = DataFile(name="xml_file", glob="*.xml")
-    store = DataStore(folder=data_folder)
-    store.add_data_file(data_file)
+    store = DataStore(path=data_folder)
+    store.add_data(data_file)
     return PLEXOSParser(config, store)
 
 
@@ -27,8 +27,8 @@ def parser_basic_mutable(data_folder) -> PLEXOSParser:
     """Create a basic parser instance for tests that modify the parser state."""
     config = PLEXOSConfig(model_name="Base", timeseries_dir=None, reference_year=2023)
     data_file = DataFile(name="xml_file", glob="*.xml")
-    store = DataStore(folder=data_folder)
-    store.add_data_file(data_file)
+    store = DataStore(path=data_folder)
+    store.add_data(data_file)
     return PLEXOSParser(config, store)
 
 
@@ -39,8 +39,8 @@ def parser_with_timeseries_dir(data_folder) -> PLEXOSParser:
 
     config = PLEXOSConfig(model_name="Base", timeseries_dir=str(timeseries_path), reference_year=2023)
     data_file = DataFile(name="xml_file", glob="*.xml")
-    store = DataStore(folder=data_folder)
-    store.add_data_file(data_file)
+    store = DataStore(path=data_folder)
+    store.add_data(data_file)
     return PLEXOSParser(config, store)
 
 
@@ -148,11 +148,10 @@ def test_attach_direct_datafile_timeseries_component_not_found_in_system(
     parser_basic: PLEXOSParser, data_folder: Path
 ) -> None:
     """Test error when component not in system."""
+    from unittest.mock import patch
+
     csv_path = data_folder / "test.csv"
     csv_path.write_text("Name,Value\nGen1,100.0")
-
-    parser_basic.system = MagicMock()
-    parser_basic.system.get_component_by_uuid.return_value = None
 
     test_uuid = UUID("12345678-1234-5678-1234-567812345678")
     ref = TimeSeriesReference(
@@ -163,7 +162,10 @@ def test_attach_direct_datafile_timeseries_component_not_found_in_system(
         datafile_path="test.csv",
     )
 
-    with pytest.raises(ValueError, match=r"Component MissingGen.*"):
+    with (
+        patch.object(parser_basic.system, "get_component_by_uuid", return_value=None),
+        pytest.raises(ValueError, match=r"Component MissingGen.*"),
+    ):
         parser_basic._attach_direct_datafile_timeseries(
             ref=ref, reference_year=2023, timeslices=None, horizon=None
         )
@@ -174,6 +176,8 @@ def test_attach_direct_datafile_timeseries_already_attached(
     parser_basic_mutable: PLEXOSParser, data_folder: Path
 ) -> None:
     """Test that already attached time series are skipped."""
+    from unittest.mock import patch
+
     test_uuid = UUID("12345678-1234-5678-1234-567812345678")
 
     parser_basic_mutable._attached_timeseries[(test_uuid, "capacity")] = True
@@ -186,13 +190,12 @@ def test_attach_direct_datafile_timeseries_already_attached(
         datafile_path="test.csv",
     )
 
-    parser_basic_mutable.system = MagicMock()
+    with patch.object(parser_basic_mutable.system, "get_component_by_uuid") as mock_get:
+        parser_basic_mutable._attach_direct_datafile_timeseries(
+            ref=ref, reference_year=2023, timeslices=None, horizon=None
+        )
 
-    parser_basic_mutable._attach_direct_datafile_timeseries(
-        ref=ref, reference_year=2023, timeslices=None, horizon=None
-    )
-
-    parser_basic_mutable.system.get_component_by_uuid.assert_not_called()
+        mock_get.assert_not_called()
 
 
 @pytest.mark.slow
@@ -200,12 +203,11 @@ def test_attach_direct_datafile_timeseries_file_not_found(
     parser_basic_mutable: PLEXOSParser, data_folder: Path
 ) -> None:
     """Test handling of missing datafile."""
+    from unittest.mock import patch
+
     mock_component = MagicMock()
     test_uuid = UUID("12345678-1234-5678-1234-567812345678")
     mock_component.uuid = test_uuid
-
-    parser_basic_mutable.system = MagicMock()
-    parser_basic_mutable.system.get_component_by_uuid.return_value = mock_component
 
     ref = TimeSeriesReference(
         component_uuid=test_uuid,
@@ -215,7 +217,10 @@ def test_attach_direct_datafile_timeseries_file_not_found(
         datafile_path="nonexistent.csv",
     )
 
-    with pytest.raises(FileNotFoundError, match="not found"):
+    with (
+        patch.object(parser_basic_mutable.system, "get_component_by_uuid", return_value=mock_component),
+        pytest.raises(FileNotFoundError, match="not found"),
+    ):
         parser_basic_mutable._attach_direct_datafile_timeseries(
             ref=ref, reference_year=2023, timeslices=None, horizon=None
         )
@@ -224,6 +229,8 @@ def test_attach_direct_datafile_timeseries_file_not_found(
 @pytest.mark.slow
 def test_build_time_series_integration(parser_basic_mutable: PLEXOSParser, data_folder: Path) -> None:
     """Test the full build_time_series workflow."""
+    from unittest.mock import patch
+
     gen_csv = data_folder / "generators.csv"
     gen_csv.write_text("Name,Value\nGen1,500.0\nGen2,750.0\nGen3,1000.0")
 
@@ -245,8 +252,6 @@ def test_build_time_series_integration(parser_basic_mutable: PLEXOSParser, data_
     load1.uuid = load1_uuid
     load1.name = "Load1"
 
-    parser_basic_mutable.system = MagicMock()
-
     def get_component_by_uuid_side_effect(uuid):
         if uuid == gen1_uuid:
             return gen1
@@ -255,9 +260,6 @@ def test_build_time_series_integration(parser_basic_mutable: PLEXOSParser, data_
         elif uuid == load1_uuid:
             return load1
         return None
-
-    parser_basic_mutable.system.get_component_by_uuid.side_effect = get_component_by_uuid_side_effect
-    parser_basic_mutable.system.get_components.return_value = []  # No timeslices
 
     parser_basic_mutable.time_series_references = [
         TimeSeriesReference(
@@ -293,18 +295,24 @@ def test_build_time_series_integration(parser_basic_mutable: PLEXOSParser, data_
         ),
     ]
 
-    parser_basic_mutable.build_time_series()
+    with (
+        patch.object(
+            parser_basic_mutable.system,
+            "get_component_by_uuid",
+            side_effect=get_component_by_uuid_side_effect,
+        ),
+        patch.object(parser_basic_mutable.system, "get_components", return_value=[]),
+    ):
+        parser_basic_mutable.build_time_series()
 
-    assert len(parser_basic_mutable._attached_timeseries) == 3  # 3 successful attachments
-    assert (gen1_uuid, "max_capacity") in parser_basic_mutable._attached_timeseries
-    assert (gen2_uuid, "max_capacity") in parser_basic_mutable._attached_timeseries
-    assert (load1_uuid, "load") in parser_basic_mutable._attached_timeseries
+        assert len(parser_basic_mutable._attached_timeseries) == 3  # 3 successful attachments
+        assert (gen1_uuid, "max_capacity") in parser_basic_mutable._attached_timeseries
+        assert (gen2_uuid, "max_capacity") in parser_basic_mutable._attached_timeseries
+        assert (load1_uuid, "load") in parser_basic_mutable._attached_timeseries
 
-    assert parser_basic_mutable.system.add_time_series.call_count == 0
+        assert len(parser_basic_mutable._failed_references) == 1
+        failed_ref, error_msg = parser_basic_mutable._failed_references[0]
+        assert failed_ref.component_name == "MissingComponent"
+        assert "not found" in error_msg
 
-    assert len(parser_basic_mutable._failed_references) == 1
-    failed_ref, error_msg = parser_basic_mutable._failed_references[0]
-    assert failed_ref.component_name == "MissingComponent"
-    assert "not found" in error_msg
-
-    assert str(gen_csv) in parser_basic_mutable._parsed_files_cache
+        assert str(gen_csv) in parser_basic_mutable._parsed_files_cache

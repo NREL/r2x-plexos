@@ -84,8 +84,8 @@ def test_battery_capacity_with_constant_variable(xml_with_variables, tmp_path, c
     """Test generator max_capacity computed as base_value * variable_value."""
     config = PLEXOSConfig(model_name="Base", reference_year=2024)
     data_file = DataFile(name="xml_file", fpath=xml_with_variables)
-    store = DataStore(folder=tmp_path)
-    store.add_data_file(data_file)
+    store = DataStore(path=tmp_path)
+    store.add_data(data_file)
 
     parser = PLEXOSParser(config, store)
     sys = parser.build_system()

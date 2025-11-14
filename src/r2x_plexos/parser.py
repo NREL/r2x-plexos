@@ -9,7 +9,7 @@ from importlib.metadata import version
 from importlib.resources import files
 from operator import itemgetter
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from infrasys import Component
@@ -17,7 +17,8 @@ from infrasys.time_series_models import SingleTimeSeries
 from loguru import logger
 from plexosdb import ClassEnum, PlexosDB
 
-from r2x_core import BaseParser, DataStore
+from r2x_core import BaseParser, DataStore, Err, Ok, ParserError, Result
+from r2x_core.datafile_utils import get_file_path
 
 from .config import PLEXOSConfig
 from .datafile_handler import ParsedFileData, extract_file_data, extract_one_time_series
@@ -134,6 +135,11 @@ class PLEXOSParser(BaseParser):
     - Horizon-based time series trimming
     """
 
+    @property
+    def config(self) -> PLEXOSConfig:
+        """Return the PLEXOSConfig instance."""
+        return cast(PLEXOSConfig, super().config)
+
     def __init__(
         self,
         config: PLEXOSConfig,
@@ -173,12 +179,11 @@ class PLEXOSParser(BaseParser):
         """
         super().__init__(
             config,
-            data_store,
-            name=name,
+            data_store=data_store,
+            system_name=name or "system",
             auto_add_composed_components=auto_add_composed_components,
             skip_validation=skip_validation,
         )
-        self.config: PLEXOSConfig = config
         self.model_name = config.model_name
         self.time_series_references: list[TimeSeriesReference] = []
         self._component_cache: dict[int, PLEXOSObject] = {}
@@ -196,134 +201,106 @@ class PLEXOSParser(BaseParser):
         if not db:
             # NOTE: We should change either plexosdb db to take xmltree or an
             # easier way to get the fpath of resolved globs.
-            data_file = data_store.get_data_file_by_name(name="xml_file")
-            fpath = data_store.reader._get_file_path(data_file, data_store.folder)
-            if fpath is None:
-                msg = "Could not resolve XML file path from data store"
-                raise ValueError(msg)
+            data_file = data_store["xml_file"]
+            file_path_result = get_file_path(data_file, data_store.folder, info=data_file.info)
+            if file_path_result.is_err():
+                raise ValueError(f"Could not resolve XML file path: {file_path_result.err()}")
+            fpath = file_path_result.unwrap()
             self.db = PlexosDB.from_xml(fpath)
         assert self.db, "Database not created correctly. Check XML file."
 
-    def validate_inputs(self) -> None:
+    def validate_inputs(self) -> Result[None, ParserError]:
         """Validate input data before parsing."""
         if self.db is None:
-            msg = "Database not initialized"
-            raise ValueError(msg)
+            return Err(ParserError("Database not initialized"))
 
-        logger.info("Selecting model={}", self.model_name)
-        model_id = self.db.get_object_id(ClassEnum.Model, self.model_name)
-        scenario_results = self.db._db.query(SCENARIO_ORDER, (model_id,))
-        priority_map: dict[str, int] = {
-            scenario: read_order or 0 for scenario, read_order in scenario_results
-        }
-        set_scenario_priority(priority_map)
-        logger.debug("Found {} scenarios for model = {}", len(priority_map), self.model_name)
+        try:
+            logger.info("Selecting model={}", self.model_name)
+            model_id = self.db.get_object_id(ClassEnum.Model, self.model_name)
+            scenario_results = self.db._db.query(SCENARIO_ORDER, (model_id,))
+            priority_map: dict[str, int] = {
+                scenario: read_order or 0 for scenario, read_order in scenario_results
+            }
+            set_scenario_priority(priority_map)
+            logger.debug("Found {} scenarios for model = {}", len(priority_map), self.model_name)
 
-        # Resolve horizon from the model
-        horizon_range = resolve_horizon_for_model(self.db, self.model_name)
-        if horizon_range is not None:
-            horizon_start: datetime
-            horizon_end: datetime
-            horizon_start, horizon_end = horizon_range
-            # Validate that horizon year is reasonable relative to reference year
-            # If horizon is more than 5 years before reference year, ignore it
-            if self.config.horizon_year is not None and horizon_start.year < self.config.horizon_year - 5:
-                logger.warning(
-                    "Horizon year {} is too far before reference year {}, ignoring horizon",
-                    horizon_start.year,
-                    self.config.horizon_year,
-                )
-            else:
-                self._horizon_start, self._horizon_end = horizon_start, horizon_end
-                horizon_str = (self._horizon_start.isoformat(), self._horizon_end.isoformat())
-                set_horizon(horizon_str)
-                logger.info(
-                    "Horizon set: {} to {} ({} total hours)",
-                    self._horizon_start,
-                    self._horizon_end,
-                    int((self._horizon_end - self._horizon_start).total_seconds() / 3600),
-                )
+            # Resolve horizon from the model
+            horizon_range = resolve_horizon_for_model(self.db, self.model_name)
+            if horizon_range is not None:
+                horizon_start: datetime
+                horizon_end: datetime
+                horizon_start, horizon_end = horizon_range
+                # Validate that horizon year is reasonable relative to reference year
+                # If horizon is more than 5 years before reference year, ignore it
+                if self.config.horizon_year is not None and horizon_start.year < self.config.horizon_year - 5:
+                    logger.warning(
+                        "Horizon year {} is too far before reference year {}, ignoring horizon",
+                        horizon_start.year,
+                        self.config.horizon_year,
+                    )
+                else:
+                    self._horizon_start, self._horizon_end = horizon_start, horizon_end
+                    horizon_str = (self._horizon_start.isoformat(), self._horizon_end.isoformat())
+                    set_horizon(horizon_str)
+                    logger.info(
+                        "Horizon set: {} to {} ({} total hours)",
+                        self._horizon_start,
+                        self._horizon_end,
+                        int((self._horizon_end - self._horizon_start).total_seconds() / 3600),
+                    )
+        except Exception as exc:  # pragma: no cover - unexpected validation error
+            return Err(ParserError(str(exc)))
 
-        return
+        return Ok(None)
 
-    def build_system_components(self) -> None:
-        """Create PLEXOS components and establish relationships.
-
-        This function partitions database properties into main properties (parent_class="System")
-        and collection properties (scoped to parent-child relationships). Creates
-        components from main properties, then links them via memberships and
-        attaches collection properties to the appropriate relationship contexts.
-
-        Raises
-        ------
-        ValueError
-            If database is not initialized
-
-        Notes
-        -----
-        Collection properties are child object properties scoped to a specific
-        parent, stored separately until memberships are resolved. Time series
-        references are registered but not attached during this phase.
-        """
+    def build_system_components(self) -> Result[None, ParserError]:
+        """Create PLEXOS components and establish relationships."""
         if self.db is None:
-            msg = "Database not initialized"
-            raise ValueError(msg)
+            return Err(ParserError("Database not initialized"))
 
-        logger.info("Building PLEXOS system components...")
+        try:
+            logger.info("Building PLEXOS system components...")
 
-        logger.trace("Querying objects from PLEXOS database...")
-        main_properties_by_object: dict[int, list[dict[str, Any]]] = defaultdict(list)
-        collection_properties_by_object: dict[int, list[dict[str, Any]]] = defaultdict(list)
+            logger.trace("Querying objects from PLEXOS database...")
+            main_properties_by_object: dict[int, list[dict[str, Any]]] = defaultdict(list)
+            collection_properties_by_object: dict[int, list[dict[str, Any]]] = defaultdict(list)
 
-        for prop in self.db.iterate_properties():
-            parent_class = prop.get("parent_class")
-            object_id = prop.get("object_id")
+            for prop in self.db.iterate_properties():
+                parent_class = prop.get("parent_class")
+                object_id = prop.get("object_id")
 
-            if not object_id or not isinstance(object_id, int):
-                continue
+                if not object_id or not isinstance(object_id, int):
+                    continue
 
-            prop_dict: dict[str, Any] = prop  # type: ignore[assignment]
+                prop_dict: dict[str, Any] = prop  # type: ignore[assignment]
 
-            if parent_class and parent_class != "System":
-                collection_properties_by_object[object_id].append(prop_dict)
-            else:
-                main_properties_by_object[object_id].append(prop_dict)
+                if parent_class and parent_class != "System":
+                    collection_properties_by_object[object_id].append(prop_dict)
+                else:
+                    main_properties_by_object[object_id].append(prop_dict)
 
-        self._collection_properties_cache = collection_properties_by_object
+            self._collection_properties_cache = collection_properties_by_object
 
-        for object_id, rows_list in main_properties_by_object.items():
-            if not rows_list:
-                continue
+            for object_id, rows_list in main_properties_by_object.items():
+                if not rows_list:
+                    continue
 
-            first_row = rows_list[0]
-            obj_type = first_row["child_class"]
-            component = self._create_component(obj_type, rows_list)
-            if component:
-                self.system.add_component(component)
-                self._component_cache[object_id] = component
+                first_row = rows_list[0]
+                obj_type = first_row["child_class"]
+                component = self._create_component(obj_type, rows_list)
+                if component:
+                    self.system.add_component(component)
+                    self._component_cache[object_id] = component
 
-        self._add_memberships()
-        self._add_collection_properties()
+            self._add_memberships()
+            self._add_collection_properties()
+        except Exception as exc:  # pragma: no cover - unexpected component error
+            return Err(ParserError(str(exc)))
 
-        return
+        return Ok(None)
 
-    def build_time_series(self) -> None:
-        """Attach time series data using three-stage processing.
-
-        Three types of time series references are parsed:
-
-        1. Direct datafile (CSV paths)
-        2. Datafile component (indirect via PLEXOSDatafile objects)
-        3. Variables (with profile properties and optional bands)
-
-        Failed attachments are logged but don't halt processing.
-
-        Notes
-        -----
-        File parsing is cached to avoid redundant reads. Multi-band time series
-        (e.g., load profiles with band_1, band_2) are detected and attached as
-        separate series with band feature tags.
-        """
+    def build_time_series(self) -> Result[None, ParserError]:
+        """Attach time series data using three-stage processing."""
         logger.info("Building time series data...")
 
         reference_year = self.config.horizon_year or 2024
@@ -335,72 +312,86 @@ class PLEXOSParser(BaseParser):
             horizon_datetime = (self._horizon_start, self._horizon_end)
 
         try:
-            timeslices = list(self.system.get_components(PLEXOSTimeslice))
-        except Exception:
-            timeslices = []
-
-        direct_refs = [
-            ref
-            for ref in self.time_series_references
-            if ref.source_type == TimeSeriesSourceType.DIRECT_DATAFILE
-        ]
-        datafile_component_refs = [
-            ref
-            for ref in self.time_series_references
-            if ref.source_type == TimeSeriesSourceType.DATAFILE_COMPONENT
-        ]
-        variable_refs = [
-            ref for ref in self.time_series_references if ref.source_type == TimeSeriesSourceType.VARIABLE
-        ]
-
-        logger.info(f"Processing {len(direct_refs)} direct datafile references")
-        logger.info(f"Processing {len(datafile_component_refs)} datafile component references")
-        logger.info(f"Processing {len(variable_refs)} variable references")
-
-        for ref in direct_refs:
             try:
-                self._attach_direct_datafile_timeseries(
-                    ref, reference_year, timeslices, horizon, horizon_datetime
-                )
-            except Exception as e:
-                logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name}: {e}")
-                self._failed_references.append((ref, str(e)))
+                timeslices = list(self.system.get_components(PLEXOSTimeslice))
+            except Exception:
+                timeslices = []
 
-        for ref in datafile_component_refs:
-            try:
-                self._attach_datafile_component_timeseries(
-                    ref, reference_year, timeslices, horizon, horizon_datetime
-                )
-            except Exception as e:
-                logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name}: {e}")
-                self._failed_references.append((ref, str(e)))
+            direct_refs = [
+                ref
+                for ref in self.time_series_references
+                if ref.source_type == TimeSeriesSourceType.DIRECT_DATAFILE
+            ]
+            datafile_component_refs = [
+                ref
+                for ref in self.time_series_references
+                if ref.source_type == TimeSeriesSourceType.DATAFILE_COMPONENT
+            ]
+            variable_refs = [
+                ref for ref in self.time_series_references if ref.source_type == TimeSeriesSourceType.VARIABLE
+            ]
 
-        for ref in variable_refs:
-            try:
-                self._attach_variable_timeseries(ref, reference_year, timeslices, horizon, horizon_datetime)
-            except Exception as e:
-                logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name} from variable: {e}")
-                self._failed_references.append((ref, str(e)))
+            logger.info(f"Processing {len(direct_refs)} direct datafile references")
+            logger.info(f"Processing {len(datafile_component_refs)} datafile component references")
+            logger.info(f"Processing {len(variable_refs)} variable references")
 
-        total_refs = len(direct_refs) + len(datafile_component_refs) + len(variable_refs)
-        success_count = total_refs - len(self._failed_references)
-        logger.info(f"Time series complete: {success_count}/{total_refs} successful")
+            for ref in direct_refs:
+                try:
+                    self._attach_direct_datafile_timeseries(
+                        ref, reference_year, timeslices, horizon, horizon_datetime
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name}: {e}")
+                    self._failed_references.append((ref, str(e)))
 
-        if self._failed_references:
-            failed_names = [ref.component_name for ref, _ in self._failed_references[:5]]
-            logger.warning(f"Failed references (first 5): {failed_names}")
+            for ref in datafile_component_refs:
+                try:
+                    self._attach_datafile_component_timeseries(
+                        ref, reference_year, timeslices, horizon, horizon_datetime
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to attach {ref.component_name}.{ref.field_name}: {e}")
+                    self._failed_references.append((ref, str(e)))
 
-    def post_process_system(self) -> None:
+            for ref in variable_refs:
+                try:
+                    self._attach_variable_timeseries(
+                        ref, reference_year, timeslices, horizon, horizon_datetime
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to attach {ref.component_name}.{ref.field_name} from variable: {e}"
+                    )
+                    self._failed_references.append((ref, str(e)))
+
+            total_refs = len(direct_refs) + len(datafile_component_refs) + len(variable_refs)
+            success_count = total_refs - len(self._failed_references)
+            logger.info(f"Time series complete: {success_count}/{total_refs} successful")
+
+            if self._failed_references:
+                failed_names = [ref.component_name for ref, _ in self._failed_references[:5]]
+                logger.warning(f"Failed references (first 5): {failed_names}")
+        except Exception as exc:  # pragma: no cover - unexpected time series failure
+            return Err(ParserError(str(exc)))
+
+        return Ok(None)
+
+    def postprocess_system(self) -> Result[None, ParserError]:
         """Set system metadata and log summary statistics."""
         logger.info("Post-processing PLEXOS system...")
 
-        self.system.data_format_version = __version__
-        self.system.description = f"PLEXOS system for model'{self.config.model_name}"
+        try:
+            self.system.data_format_version = __version__
+            self.system.description = f"PLEXOS system for model'{self.config.model_name}"
 
-        total_components = len(list(self.system.get_components(Component)))
-        logger.info("System name: {}", self.system.name)
-        logger.info("Total components: {}", total_components)
-        logger.info("Post-processing complete")
+            total_components = len(list(self.system.get_components(Component)))
+            logger.info("System name: {}", self.system.name)
+            logger.info("Total components: {}", total_components)
+            logger.info("Post-processing complete")
+        except Exception as exc:  # pragma: no cover - logging/setup failure
+            return Err(ParserError(str(exc)))
+
+        return Ok(None)
 
     def _add_memberships(self) -> None:
         """Build parent-child relationships from PLEXOS membership table.
@@ -531,7 +522,9 @@ class PLEXOSParser(BaseParser):
                     property_value = PLEXOSPropertyValue.from_records(prop_rows)
                     property_values[field_name] = property_value
 
-                    if property_value.has_datafile() or property_value.has_variable():
+                    if (
+                        property_value.has_datafile() or property_value.has_variable()
+                    ) and matching_membership.membership_id is not None:
                         self._register_collection_property_time_series_reference(
                             component, field_name, property_value, matching_membership.membership_id
                         )
@@ -812,7 +805,7 @@ class PLEXOSParser(BaseParser):
             raise ValueError("No datafile path provided")
 
         normalized_path = datafile_path.replace("\\", "/")
-        base_path = Path(self.data_store.folder)
+        base_path = Path(self.store.folder)
         if self.config.timeseries_dir:
             base_path = base_path / self.config.timeseries_dir
         return base_path / normalized_path
@@ -1135,7 +1128,7 @@ class PLEXOSParser(BaseParser):
             )
             features = {"horizon": horizon} if horizon else {}
             logger.trace(f"Attaching time series to {ref.component_name}.{ref.field_name}")
-            self.system.add_time_series(field_ts, component, **features)
+            self.system.add_time_series(field_ts, component, context=None, **features)
 
             max_value = float(max(ts.data))
             if hasattr(component, ref.field_name):
@@ -1195,7 +1188,7 @@ class PLEXOSParser(BaseParser):
             logger.trace(
                 f"Attaching time series to collection property {ref.component_name}.{ref.field_name}"
             )
-            self.system.add_time_series(field_ts, target_coll_props, **features)
+            self.system.add_time_series(field_ts, target_coll_props, context=None, **features)
 
             max_value = float(max(ts.data))
             for key, entry in list(property_value.entries.items()):
@@ -1508,6 +1501,9 @@ class PLEXOSParser(BaseParser):
         component = self.system.get_component_by_uuid(ref.component_uuid)
         if not component:
             raise ValueError(f"Component {ref.component_name} not found")
+
+        if not ref.datafile_component_name:
+            raise ValueError(f"No datafile component name provided for {ref.component_name}")
 
         datafile_component = self.system.get_component(PLEXOSDatafile, ref.datafile_component_name)
         if not datafile_component:

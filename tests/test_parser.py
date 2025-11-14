@@ -10,8 +10,8 @@ from r2x_plexos.models import PLEXOSMembership, PLEXOSVariable
 def config_store_example(data_folder) -> tuple[PLEXOSConfig, DataStore]:
     config = PLEXOSConfig(model_name="Base", timeseries_dir=None, reference_year=2024)
     data_file = DataFile(name="xml_file", glob="*.xml")
-    store = DataStore(folder=data_folder)
-    store.add_data_file(data_file)
+    store = DataStore(path=data_folder)
+    store.add_data(data_file)
     return config, store
 
 
@@ -75,8 +75,8 @@ def test_collection_properties_basic(db_with_reserve_collection_property, tmp_pa
 
     config = PLEXOSConfig(model_name="Base", reference_year=2024)
     data_file = DataFile(name="xml_file", fpath=xml_path)
-    store = DataStore(folder=tmp_path)
-    store.add_data_file(data_file)
+    store = DataStore(path=tmp_path)
+    store.add_data(data_file)
 
     parser = PLEXOSParser(config, store)
     system = parser.build_system()
@@ -110,8 +110,8 @@ def test_collection_properties_with_timeseries(db_with_reserve_collection_proper
 
     config = PLEXOSConfig(model_name="Base", reference_year=2024)
     data_file = DataFile(name="xml_file", fpath=xml_path)
-    store = DataStore(folder=tmp_path)
-    store.add_data_file(data_file)
+    store = DataStore(path=tmp_path)
+    store.add_data(data_file)
 
     parser = PLEXOSParser(config, store)
     system = parser.build_system()

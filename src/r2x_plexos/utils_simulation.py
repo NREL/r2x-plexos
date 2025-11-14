@@ -181,8 +181,7 @@ def validate_simulation_config(
     # Convert config to attributes
     attrs_result = convert_simulation_config_to_attributes(sim_config)
     if attrs_result.is_err():
-        assert isinstance(attrs_result, Err)  # Type narrowing for mypy
-        return Err(attrs_result.error)
+        return Err(attrs_result.unwrap_err())
 
     attributes = attrs_result.unwrap()
 
@@ -191,8 +190,7 @@ def validate_simulation_config(
     for attr_name in attributes:
         validation_result = validate_simulation_attribute(db, class_enum, attr_name)
         if validation_result.is_err():
-            assert isinstance(validation_result, Err)  # Type narrowing for mypy
-            errors.append(validation_result.error)
+            errors.append(validation_result.unwrap_err())
 
     if errors:
         return Err("Invalid attributes:\n" + "\n".join(errors))
@@ -245,14 +243,12 @@ def ingest_simulation_config_to_plexosdb(
     if validate:
         validation_result = validate_simulation_config(db, class_enum, sim_config)
         if validation_result.is_err():
-            assert isinstance(validation_result, Err)  # Type narrowing for mypy
-            return Err(validation_result.error)
+            return Err(validation_result.unwrap_err())
 
     # Convert config to attributes
     attrs_result = convert_simulation_config_to_attributes(sim_config)
     if attrs_result.is_err():
-        assert isinstance(attrs_result, Err)  # Type narrowing for mypy
-        return Err(attrs_result.error)
+        return Err(attrs_result.unwrap_err())
 
     attributes = attrs_result.unwrap()
 

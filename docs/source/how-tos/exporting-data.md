@@ -83,8 +83,8 @@ from r2x_plexos import PLEXOSParser, PLEXOSExporter, PLEXOSConfig
 
 # Parse
 config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-store = DataStore(folder=Path("input"))
-store.add_data_file(DataFile(name="xml", glob="*.xml"))
+store = DataStore(path=Path("input"))
+store.add_data(DataFile(name="xml", glob="*.xml"))
 
 parser = PLEXOSParser(config, store)
 system = parser.build_system()

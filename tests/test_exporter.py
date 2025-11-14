@@ -24,7 +24,7 @@ def serialized_plexos_system(tmp_path, db_all_gen_types, plexos_config) -> "Syst
     from r2x_core import DataStore
     from r2x_plexos import PLEXOSParser
 
-    store = DataStore(folder=tmp_path)
+    store = DataStore(path=tmp_path)
 
     parser = PLEXOSParser(plexos_config, store, db=db_all_gen_types)
     sys = parser.build_system()
@@ -192,7 +192,7 @@ def test_roundtrip_db_parser_system_exporter_db(db_all_gen_types: PlexosDB, tmp_
     original_db = db_all_gen_types
 
     config = PLEXOSConfig(model_name="Base", horizon_year=2024, timeseries_dir=tmp_path)
-    store = DataStore(folder=tmp_path)
+    store = DataStore(path=tmp_path)
 
     parser = PLEXOSParser(config, store, db=original_db)
     system = parser.build_system()

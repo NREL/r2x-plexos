@@ -96,8 +96,8 @@ def test_parser_multiband_heat_rate(db_thermal_gen_multiband, tmp_path):
 
     config = PLEXOSConfig(model_name="Base", reference_year=2024)
     data_file = DataFile(name="xml_file", fpath=xml_path)
-    store = DataStore(folder=tmp_path)
-    store.add_data_file(data_file)
+    store = DataStore(path=tmp_path)
+    store.add_data(data_file)
 
     parser = PLEXOSParser(config, store)
     system = parser.build_system()

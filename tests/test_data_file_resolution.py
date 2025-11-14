@@ -10,7 +10,7 @@ from r2x_plexos.parser import PLEXOSParser
 def test_multi_band_datafile(tmp_path, db_with_multiband_variable, caplog):
     db = db_with_multiband_variable
     config = PLEXOSConfig(model_name="Base")
-    store = DataStore(folder=tmp_path)
+    store = DataStore(path=tmp_path)
 
     parser = PLEXOSParser(config, store, db=db)
     sys: System = parser.build_system()

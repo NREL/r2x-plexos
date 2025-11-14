@@ -116,8 +116,8 @@ def xml_with_multi_weather_chrono(tmp_path, year_daily_hour):
 def test_multi_band_datafile(tmp_path, xml_with_multi_weather_chrono, caplog):
     config = PLEXOSConfig(model_name="TestModel", reference_year=2026)
     data_file = DataFile(name="xml_file", fpath=xml_with_multi_weather_chrono)
-    store = DataStore(folder=tmp_path)
-    store.add_data_file(data_file)
+    store = DataStore(path=tmp_path)
+    store.add_data(data_file)
 
     parser = PLEXOSParser(config, store)
     sys: System = parser.build_system()

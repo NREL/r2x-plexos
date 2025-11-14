@@ -18,11 +18,11 @@ config = PLEXOSConfig(
 
 # Set up data store
 data_folder = Path("path/to/plexos/files")
-store = DataStore(folder=data_folder)
+store = DataStore(path=data_folder)
 
 # Add PLEXOS XML file
 data_file = DataFile(name="xml_file", glob="*.xml")
-store.add_data_file(data_file)
+store.add_data(data_file)
 
 # Create parser and build system
 parser = PLEXOSParser(config, store)

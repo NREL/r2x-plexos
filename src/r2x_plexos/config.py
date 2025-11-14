@@ -1,5 +1,6 @@
 """PLEXOS configuration class."""
 
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import DirectoryPath, Field, FilePath
@@ -26,3 +27,8 @@ class PLEXOSConfig(PluginConfig):
     simulation_config: Annotated[SimulationConfig | None, Field(description="Simulation configuration")] = (
         None
     )
+
+    @classmethod
+    def get_config_path(cls) -> Path:
+        """Return the plugin's configuration directory path."""
+        return cls._resolve_config_path(None)

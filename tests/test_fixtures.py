@@ -1,7 +1,7 @@
 import pytest
 from plexosdb import ClassEnum
 
-pytestmark = pytest.mark.test_fixtures
+pytestmark = pytest.mark.fixtures
 
 
 def test_fixture_xmls(db_all_gen_types):

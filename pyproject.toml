@@ -84,8 +84,9 @@ markers = [
     "unit: Fast unit tests with no external dependencies",
     "integration: Integration tests requiring system setup",
     "slow: Slow tests (>1s)",
-  "export: marks to test exporter functions",
-  "serialize: marks tests for serialization functionality"
+    "export: marks to test exporter functions",
+    "serialize: marks tests for serialization functionality",
+    "fixtures: marks for testing fixtures"
 ]
 
 
@@ -150,6 +151,7 @@ omit = [
   "*/tests/*",
   "*/__pycache__/*",
   "*/site-packages/*",
+  "src/r2x_plexos/plugins.py",
 ]
 
 [tool.coverage.report]

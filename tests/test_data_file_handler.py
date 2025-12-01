@@ -1,4 +1,6 @@
 from datetime import datetime
+from fractions import Fraction
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +10,7 @@ import pytest
 from r2x_plexos.datafile_handler import (
     DatetimeComponentsFile,
     HourlyComponentsFile,
+    HourlyDailyFile,
     MonthlyFile,
     PatternFile,
     TimesliceFile,
@@ -33,6 +36,7 @@ from r2x_plexos.datafile_handler import (
     parse_datetime_string,
     parse_file,
     safe_float_conversion,
+    validate_and_adjust_date,
 )
 
 if TYPE_CHECKING:
@@ -773,3 +777,131 @@ def test_extract_all_time_series_with_timeslices() -> None:
 
         assert len(result) == 1
         assert "Generator1" in result
+
+
+def test_validate_and_adjust_date_clamps_invalid_values() -> None:
+    dt = validate_and_adjust_date(2023, 13, 35, hour=5)
+
+    assert dt.month == 1
+    assert dt.day == 31
+    assert dt.hour == 5
+
+
+def test_validate_and_adjust_date_clamps_low_day() -> None:
+    dt = validate_and_adjust_date(2023, 2, 0)
+    assert dt.day == 1
+
+
+def test_parse_file_unsupported_type_raises() -> None:
+    class DummyFileType:
+        pass
+
+    df = pl.LazyFrame({"Value": [1.0]})
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        parse_file(DummyFileType(), df, datetime(2023, 1, 1), 2023)
+
+
+def test_pattern_file_requires_name_column() -> None:
+    df = pl.LazyFrame({"Pattern": ["M1,D1,H0"], "1": [100.0]})
+    file_type = PatternFile()
+
+    with pytest.raises(ValueError, match="No 'Name' column found in pattern file"):
+        parse_file(file_type, df, datetime(2023, 1, 1), 2023)
+
+
+def test_value_file_skips_rows_without_value() -> None:
+    df = pl.LazyFrame({"Name": ["A", "B"], "Value": [100.0, None]})
+    file_type = ValueFile()
+
+    result = parse_file(file_type, df)
+    assert result == {"A": 100.0}
+
+
+def test_yearly_file_requires_year() -> None:
+    df = pl.LazyFrame({"Name": ["X"], "Year": [2024], "Value": [1.0]})
+    file_type = YearlyFile()
+
+    with pytest.raises(ValueError, match="Year must be provided for yearly data files"):
+        parse_file(file_type, df, datetime(2024, 1, 1), None)
+
+
+def test_yearly_file_handles_no_name_column() -> None:
+    df = pl.LazyFrame({"Year": [2024], "Generator": [500.0]})
+    file_type = YearlyFile()
+
+    result = parse_file(file_type, df, datetime(2024, 1, 1), 2024)
+    assert "Generator" in result
+
+
+def test_yearly_file_handles_wide_year_columns() -> None:
+    df = pl.LazyFrame({"Name": ["Alpha"], "YR-2024": [123.0]})
+    file_type = YearlyFile()
+
+    result = parse_file(file_type, df, datetime(2024, 1, 1), 2024)
+    assert "Alpha" in result
+
+
+def test_hourly_daily_requires_year() -> None:
+    df = pl.LazyFrame({"Year": [2024], "Month": [1], "Day": [1]})
+    file_type = HourlyDailyFile()
+
+    with pytest.raises(ValueError, match="Year must be provided for HourlyDailyFile"):
+        parse_file(file_type, df, datetime(2024, 1, 1), None)
+
+
+def test_hourly_daily_requires_columns() -> None:
+    df = pl.LazyFrame({"Year": [2024], "Day": [1]})
+    file_type = HourlyDailyFile()
+
+    with pytest.raises(ValueError, match="Year, Month, and Day columns are required for HourlyDailyFile"):
+        parse_file(file_type, df, datetime(2024, 1, 1), 2024)
+
+
+def test_hourly_daily_missing_hour_data() -> None:
+    data = {"Year": [2024], "Month": [1], "Day": [1]}
+    for hour in range(1, 24):
+        data[str(hour)] = [1.0]
+
+    df = pl.LazyFrame(data)
+    file_type = HourlyDailyFile()
+
+    with pytest.raises(ValueError, match="Missing hourly data"):
+        parse_file(file_type, df, datetime(2024, 1, 1), 2024)
+
+
+def test_safe_float_conversion_handles_fraction() -> None:
+    assert safe_float_conversion(Fraction(3, 2)) == 1.5
+
+
+def test_get_timeslice_patterns_hours_without_include() -> None:
+    timeslice = SimpleNamespace(name="OffPeak")
+    assert get_timeslice_patterns_hours(timeslice, 2024) == set()
+
+
+def test_timeslice_file_requires_year(mock_timeslices: list[MockTimeslice]) -> None:
+    file_type = TimesliceFile(cast(list["PlexosTimeSlice"], mock_timeslices))
+
+    with pytest.raises(ValueError, match="Year must be provided for timeslice files"):
+        parse_file(file_type, pl.LazyFrame({"Name": ["G"], "Summer": [1.0]}), datetime(2024, 1, 1), None)
+
+
+def test_timeslice_file_skips_rows_without_name(mock_timeslices: list[MockTimeslice]) -> None:
+    file_type = TimesliceFile(cast(list["PlexosTimeSlice"], mock_timeslices))
+    df = pl.LazyFrame({"Summer": [1.0], "Winter": [2.0]})
+
+    result = parse_file(file_type, df, datetime(2024, 1, 1), 2024)
+    assert result == {}
+
+
+def test_timeslice_file_skips_mismatched_year_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    timeslice = SimpleNamespace(name="YR-2023")
+    file_type = TimesliceFile([timeslice])
+    df = pl.LazyFrame({"Name": ["Gen"], "YR-2023": [1.0]})
+
+    monkeypatch.setattr(
+        "r2x_plexos.datafile_handler.extract_timeslice_hours",
+        lambda _, __: {"YR-2023": {0}},
+    )
+
+    result = parse_file(file_type, df, datetime(2024, 1, 1), 2024)
+    assert result["Gen"].data[0] == 0.0

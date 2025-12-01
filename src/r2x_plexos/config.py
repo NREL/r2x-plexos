@@ -1,7 +1,8 @@
 """PLEXOS configuration class."""
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import DirectoryPath, Field, FilePath
 
@@ -31,4 +32,7 @@ class PLEXOSConfig(PluginConfig):
     @classmethod
     def get_config_path(cls) -> Path:
         """Return the plugin's configuration directory path."""
-        return cls._resolve_config_path(None)
+        resolve_method: Callable[[Any], Path] | None = getattr(cls, "_resolve_config_path", None)
+        if resolve_method:
+            return resolve_method(None)
+        return cls._package_config_path()

@@ -1357,7 +1357,7 @@ wheels = [
 
 [[package]]
 name = "r2x-core"
-version = "0.1.1"
+version = "0.2.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -1366,10 +1366,11 @@ dependencies = [
     { name = "packaging" },
     { name = "polars" },
     { name = "pydantic" },
+    { name = "rust-ok" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b0/0d/c3407faa0c9e3df4172fa563b4bc3117981639f71b61ba33008570ff89b5/r2x_core-0.1.1.tar.gz", hash = "sha256:7231df68b33238307af8e5ba95a8c7fa1ba34b80051676f631a19db1f7d239f9", size = 64024, upload-time = "2025-11-13T05:41:37.39Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/cb/528d7319c073e1edb26bd9d44db8dc9cbcf385eb4c33cf38f5ee7f87a132/r2x_core-0.2.3.tar.gz", hash = "sha256:10fe67f31e8ad90407af5f773fdeb77bbdf2390ce45a015ce183729bd5214761", size = 68031, upload-time = "2025-11-29T19:57:59.553Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/37/75/c495e9929be03fedfa42222efee31fb874ae341193a98d51c066a0d100ac/r2x_core-0.1.1-py3-none-any.whl", hash = "sha256:c56e92659b761841a15f7484aa2061604b54d89521d581d30ee8defd9292ff26", size = 77007, upload-time = "2025-11-13T05:41:36.168Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/bd/364d3c96c1eb029c9a0fb7deacc0d0166d1b7241953242e6c3bf6bb372ac/r2x_core-0.2.3-py3-none-any.whl", hash = "sha256:d930c81b7aa79b63f7fc0aa31106cf7ac28db0175f3be549185021a6d84f2a75", size = 83854, upload-time = "2025-11-29T19:57:57.325Z" },
 ]
 
 [[package]]
@@ -1406,7 +1407,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "plexosdb", specifier = ">=1.1.3" },
-    { name = "r2x-core", specifier = ">=0.1.1,<1.0.0" },
+    { name = "r2x-core", specifier = ">=0.2.1,<1.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1542,6 +1543,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c3/07/3c45562c67933cc35f6d5df4ca77dabbcd88fddaca0d6b8371693d29fd56/ruff-0.14.1-py3-none-win32.whl", hash = "sha256:e037ea374aaaff4103240ae79168c0945ae3d5ae8db190603de3b4012bd1def6", size = 12319467, upload-time = "2025-10-16T18:05:33.261Z" },
     { url = "https://files.pythonhosted.org/packages/02/88/0ee4ca507d4aa05f67e292d2e5eb0b3e358fbcfe527554a2eda9ac422d6b/ruff-0.14.1-py3-none-win_amd64.whl", hash = "sha256:59d599cdff9c7f925a017f6f2c256c908b094e55967f93f2821b1439928746a1", size = 13401123, upload-time = "2025-10-16T18:05:35.984Z" },
     { url = "https://files.pythonhosted.org/packages/b8/81/4b6387be7014858d924b843530e1b2a8e531846807516e9bea2ee0936bf7/ruff-0.14.1-py3-none-win_arm64.whl", hash = "sha256:e3b443c4c9f16ae850906b8d0a707b2a4c16f8d2f0a7fe65c475c5886665ce44", size = 12436636, upload-time = "2025-10-16T18:05:38.995Z" },
+]
+
+[[package]]
+name = "rust-ok"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/e4/d4ba4f6371bb3d2aa43e755bbba1c826e04250dbe21d0bbc31118762171c/rust_ok-0.1.0.tar.gz", hash = "sha256:65061f2720da9668ac773d41c1bbb26c136ac44ae64825fcc30ded7da906304c", size = 4592, upload-time = "2025-11-24T17:09:29.531Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/2d/0d77828ee2d53d3d7255027243d6544dc79611564383ac372bf61ed5132d/rust_ok-0.1.0-py3-none-any.whl", hash = "sha256:1d5798151644a26a1ae1140dece1494f632f017b9eff8fb1c43feb9a7b9c1223", size = 6879, upload-time = "2025-11-24T17:09:24.892Z" },
 ]
 
 [[package]]

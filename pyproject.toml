@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11, <3.14"
 dependencies = [
     "plexosdb>=1.1.3",
-    "r2x-core>=0.1.1,<1.0.0",
+    "r2x-core>=0.2.1,<1.0.0",
 ]
 keywords=["PLEXOS"]
 classifiers = [
@@ -70,15 +70,25 @@ requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]
-pythonpath = [
-  "src"
-]
+pythonpath = ["src"]
 testpaths = ["tests"]
-markers = [
-  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-  "export: marks to test exporter functions",
-  "serialize: marks tests for serialization functionality"
+addopts = [
+    "--cov=r2x_plexos",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+    "--cov-report=json",
+    "--strict-markers",
+    "-v",
 ]
+markers = [
+    "unit: Fast unit tests with no external dependencies",
+    "integration: Integration tests requiring system setup",
+    "slow: Slow tests (>1s)",
+    "export: marks to test exporter functions",
+    "serialize: marks tests for serialization functionality",
+    "fixtures: marks for testing fixtures"
+]
+
 
 [tool.mypy]
 strict = true
@@ -134,3 +144,29 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 [tool.ruff.lint.mccabe]
 # Cyclomatic complexity threshold
 max-complexity = 10
+
+[tool.coverage.run]
+source = ["src/r2x_plexos"]
+omit = [
+  "*/tests/*",
+  "*/__pycache__/*",
+  "*/site-packages/*",
+  "src/r2x_plexos/plugins.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "@abstractmethod",
+  "@abstract",
+]
+precision = 2
+fail_under = 90
+
+[tool.coverage.html]
+directory = "htmlcov"

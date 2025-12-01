@@ -18,7 +18,7 @@ from loguru import logger
 from plexosdb import ClassEnum, PlexosDB
 
 from r2x_core import BaseParser, DataStore, Err, Ok, ParserError, Result
-from r2x_core.datafile_utils import get_file_path
+from r2x_core.datafile_utils import get_fpath
 
 from .config import PLEXOSConfig
 from .datafile_handler import ParsedFileData, extract_file_data, extract_one_time_series
@@ -202,7 +202,7 @@ class PLEXOSParser(BaseParser):
             # NOTE: We should change either plexosdb db to take xmltree or an
             # easier way to get the fpath of resolved globs.
             data_file = data_store["xml_file"]
-            file_path_result = get_file_path(data_file, data_store.folder, info=data_file.info)
+            file_path_result = get_fpath(data_file, data_store.folder, info=data_file.info)
             if file_path_result.is_err():
                 raise ValueError(f"Could not resolve XML file path: {file_path_result.err()}")
             fpath = file_path_result.unwrap()

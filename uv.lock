@@ -1635,7 +1635,7 @@ wheels = [
 
 [[package]]
 name = "sphinx-reports"
-version = "0.9.7"
+version = "0.9.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "coverage" },
@@ -1646,9 +1646,9 @@ dependencies = [
     { name = "pytooling" },
     { name = "sphinx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/3f/fc46543be23498cf694c170f7c16e1e68764720f65d5d68b26c0d91cabe9/sphinx_reports-0.9.7.tar.gz", hash = "sha256:69ff9f50901e383c77c1f9fff2cb4505a8bd13beddb593dddaf8d0b24fb4eaa9", size = 34160, upload-time = "2025-06-09T21:28:29.79Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/ed/694dbacb8d717a2fca90603628439530ccddd5ef988e70e6a218235b1163/sphinx_reports-0.9.9.tar.gz", hash = "sha256:0c3535203c6eef1342db1c9ba20f81bfa69390bcec057da08cede15dbe3d7eb6", size = 34296, upload-time = "2025-10-28T20:07:29.39Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/b2/9d8358d0ea933530bccb1c2156ededbd1a9a5090060b36dd5c03349c8fea/sphinx_reports-0.9.7-py3-none-any.whl", hash = "sha256:65791747546ab9d3a6ee511cbfdf489e7b84b5d30c8278cbb1dd53bfb11710a0", size = 42612, upload-time = "2025-06-09T21:28:31.753Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/e6/f2729db598a1f5a2ff7c2c0101bc531b126eac161d876a1bc277bd0571a8/sphinx_reports-0.9.9-py3-none-any.whl", hash = "sha256:ebfc61cebbd983f8ff03999bafeaa854eb9176f69e7ba857e70674fce0b7e0e7", size = 42439, upload-time = "2025-10-28T20:07:27.415Z" },
 ]
 
 [[package]]

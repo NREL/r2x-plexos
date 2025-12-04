@@ -16,7 +16,6 @@ from .models.property import PLEXOSPropertyValue
 from .utils_exporter import (
     export_time_series_csv,
     generate_csv_filename,
-    get_component_category,
     get_output_directory,
 )
 from .utils_mappings import PLEXOS_TYPE_MAP_INVERTED
@@ -193,13 +192,15 @@ class PLEXOSExporter(BaseExporter):
 
             logger.debug(f"Adding {len(components)} {component_type.__name__} components")
 
-            # Sort by category first (groupby requires sorted data)
-            components.sort(key=get_component_category)  # type: ignore[arg-type]
-
             # Group components by category and add each group
-            for category, group in groupby(components, key=get_component_category):  # type: ignore[arg-type]
+            for category, group in groupby(components, key=lambda x: x.category or ""):  # type: ignore
                 names = [comp.name for comp in group]
-                self.db.add_objects(class_enum, *names, category=category)
+                try:
+                    self.db.add_objects(class_enum, *names, category=category)
+                except KeyError as e:
+                    logger.error(f"Failed to add {class_enum} objects with category '{category}': {e}")
+                    logger.debug(f"Component type: {component_type.__name__}, names: {names[:5]}")
+                    raise
 
         return Ok(None)
 
@@ -276,7 +277,7 @@ class PLEXOSExporter(BaseExporter):
 
             time_series_data: list[tuple[str, Any]] = []
             for component, ts_key in group_list:
-                ts = self.system.get_time_series(component, ts_key.name, **ts_key.features)
+                ts = self.system.get_time_series_by_key(component, ts_key)
                 time_series_data.append((component.name, ts))
 
             result = export_time_series_csv(filepath, time_series_data)

@@ -192,11 +192,17 @@ class PLEXOSExporter(BaseExporter):
 
             logger.debug(f"Adding {len(components)} {component_type.__name__} components")
 
-            # Group components by category and add each group
+            # Sort components by category to group them
+            components.sort(key=lambda x: x.category or "")  # type: ignore
+
+            # Group components by category and add each group in one call
             for category, group in groupby(components, key=lambda x: x.category or ""):  # type: ignore
                 names = [comp.name for comp in group]
                 try:
-                    self.db.add_objects(class_enum, *names, category=category)
+                    if category:
+                        self.db.add_objects(class_enum, *names, category=category)
+                    else:
+                        self.db.add_objects(class_enum, *names)
                 except KeyError as e:
                     logger.error(f"Failed to add {class_enum} objects with category '{category}': {e}")
                     logger.debug(f"Component type: {component_type.__name__}, names: {names[:5]}")

@@ -216,6 +216,7 @@ class PLEXOSExporter(BaseExporter):
         This method:
         1. Adds component properties using bulk insert from system.to_records()
         2. Adds component memberships (relationships between components)
+        3. Exports time series to CSV files
 
         Components without properties (PLEXOSDatafile, PLEXOSMembership) are filtered out.
         """
@@ -223,6 +224,13 @@ class PLEXOSExporter(BaseExporter):
 
         self._add_component_properties()
         self._add_memberships()
+
+        # Export time series before finalizing XML
+        logger.info("Exporting time series")
+        ts_result = self.export_time_series()
+        if isinstance(ts_result, Err):
+            logger.error("Failed to export time series: {}", ts_result.error)
+            return ts_result
 
         output_dir = get_output_directory(self.config, self.system)
         base_folder = output_dir.parent
@@ -242,18 +250,24 @@ class PLEXOSExporter(BaseExporter):
         Result[None, ExporterError]
             Ok(None) on success, Err(ExporterError) on failure
         """
-        components_with_ts = list(
-            self.system.get_components(PLEXOSObject, filter_func=lambda c: self.system.has_time_series(c))
-        )
+        # Get ALL components with time series, not just PLEXOSObject
+        all_components_with_ts = []
+        for component_type in self.system.get_component_types():
+            components = list(
+                self.system.get_components(
+                    component_type, filter_func=lambda c: self.system.has_time_series(c)
+                )
+            )
+            all_components_with_ts.extend(components)
 
-        if not components_with_ts:
-            logger.info("No components with time series found")
+        if not all_components_with_ts:
+            logger.warning("No components with time series found")
             return Ok(None)
 
-        logger.debug(f"Found {len(components_with_ts)} components with time series")
+        logger.debug(f"Found {len(all_components_with_ts)} components with time series")
 
         ts_metadata: list[tuple[Any, Any]] = []
-        for component in components_with_ts:
+        for component in all_components_with_ts:
             ts_keys = self.system.list_time_series_keys(component)
             ts_metadata.extend((component, ts_key) for ts_key in ts_keys)
 
@@ -293,7 +307,7 @@ class PLEXOSExporter(BaseExporter):
                 logger.error(f"Failed to export time series: {result.error}")
                 return Err(ExporterError(f"Time series export failed: {result.error}"))
 
-        logger.info("Exported {} time series to {}", len(time_series_data), filepath)
+        logger.info(f"Exported {len(csv_filepaths)} time series files to {output_dir}")
         self._sync_datafile_objects(csv_filepaths)
 
         return Ok(None)
@@ -362,6 +376,9 @@ class PLEXOSExporter(BaseExporter):
             return
 
         records = []
+        seen_memberships = set()  # Track unique (parent_object_id, collection_id, child_object_id)
+        duplicate_count = 0
+
         for membership in memberships:
             if not membership.parent_object or not membership.child_object:
                 continue
@@ -378,28 +395,54 @@ class PLEXOSExporter(BaseExporter):
             ):
                 continue
 
-            parent_object_id = self.db.get_object_id(parent_class, membership.parent_object.name)
-            child_object_id = self.db.get_object_id(child_class, membership.child_object.name)
-
-            record = {
-                "parent_class_id": self.db.get_class_id(parent_class),
-                "parent_object_id": parent_object_id,
-                "collection_id": self.db.get_collection_id(
+            try:
+                parent_object_id = self.db.get_object_id(parent_class, membership.parent_object.name)
+                child_object_id = self.db.get_object_id(child_class, membership.child_object.name)
+                collection_id = self.db.get_collection_id(
                     membership.collection,
                     parent_class_enum=parent_class,
                     child_class_enum=child_class,
-                ),
-                "child_class_id": self.db.get_class_id(child_class),
-                "child_object_id": child_object_id,
-            }
-            records.append(record)
+                )
+
+                # Check for duplicates based on the unique constraint
+                membership_key = (parent_object_id, collection_id, child_object_id)
+
+                if membership_key in seen_memberships:
+                    duplicate_count += 1
+                    logger.debug(
+                        f"Skipping duplicate membership: {membership.parent_object.name} "
+                        f"-> {membership.child_object.name} via {membership.collection}"
+                    )
+                    continue
+
+                seen_memberships.add(membership_key)
+
+                record = {
+                    "parent_class_id": self.db.get_class_id(parent_class),
+                    "parent_object_id": parent_object_id,
+                    "collection_id": collection_id,
+                    "child_class_id": self.db.get_class_id(child_class),
+                    "child_object_id": child_object_id,
+                }
+                records.append(record)
+
+            except Exception as e:
+                logger.warning(
+                    f"Skipping invalid membership: {membership.parent_object.name} -> "
+                    f"{membership.child_object.name}: {e}"
+                )
+                continue
+
+        if duplicate_count > 0:
+            logger.info(f"Skipped {duplicate_count} duplicate memberships")
 
         if not records:
             logger.warning("No valid membership records to add")
             return
 
+        logger.info(f"Adding {len(records)} unique memberships to database")
         self.db.add_memberships_from_records(records)
-        logger.info(f"Added {len(records)} memberships")
+        logger.info(f"Successfully added {len(records)} memberships")
 
     def _sync_datafile_objects(self, csv_filepaths: list[Path]) -> None:
         """Create or update PLEXOSDatafile objects for exported CSVs."""

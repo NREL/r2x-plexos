@@ -409,10 +409,6 @@ class PLEXOSExporter(BaseExporter):
 
                 if membership_key in seen_memberships:
                     duplicate_count += 1
-                    logger.debug(
-                        f"Skipping duplicate membership: {membership.parent_object.name} "
-                        f"-> {membership.child_object.name} via {membership.collection}"
-                    )
                     continue
 
                 seen_memberships.add(membership_key)
@@ -426,23 +422,15 @@ class PLEXOSExporter(BaseExporter):
                 }
                 records.append(record)
 
-            except Exception as e:
-                logger.warning(
-                    f"Skipping invalid membership: {membership.parent_object.name} -> "
-                    f"{membership.child_object.name}: {e}"
-                )
+            except Exception:
                 continue
-
-        if duplicate_count > 0:
-            logger.info(f"Skipped {duplicate_count} duplicate memberships")
 
         if not records:
             logger.warning("No valid membership records to add")
             return
 
-        logger.info(f"Adding {len(records)} unique memberships to database")
         self.db.add_memberships_from_records(records)
-        logger.info(f"Successfully added {len(records)} memberships")
+        logger.success(f"Successfully added {len(records)} memberships")
 
     def _sync_datafile_objects(self, csv_filepaths: list[Path]) -> None:
         """Create or update PLEXOSDatafile objects for exported CSVs."""

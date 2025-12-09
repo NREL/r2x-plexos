@@ -447,7 +447,11 @@ class PLEXOSExporter(BaseExporter):
                 logger.debug(f"Created PLEXOSDatafile object for {filepath.name}")
             else:
                 existing_df = existing_datafiles[stem]
-                if existing_df.filename is None:
-                    existing_df.filename = PLEXOSPropertyValue()
-                existing_df.filename.add_entry(value=0.0, text=str(filepath))
+                if not isinstance(existing_df.filename, PLEXOSPropertyValue):
+                    prop_value = PLEXOSPropertyValue()
+                    existing_df.filename = prop_value
+                else:
+                    prop_value = existing_df.filename
+
+                prop_value.add_entry(value=0.0, text=str(filepath))
                 logger.debug(f"Updated PLEXOSDatafile object for {filepath.name}")

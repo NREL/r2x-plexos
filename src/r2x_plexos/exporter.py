@@ -340,17 +340,16 @@ class PLEXOSExporter(BaseExporter):
             for comp in self.system.get_components(component_type):
                 aliased_dict = comp.model_dump(by_alias=True, exclude_defaults=self.exclude_defaults)
 
-                plexos_record: dict[str, Any] = {}
+                properties: dict[str, Any] = {}
                 for k, v in aliased_dict.items():
                     if k in metadata_fields or v is None:
                         continue
                     if isinstance(v, int | float | str | bool):
-                        plexos_record[k] = v
+                        properties[k] = {"value": v, "band": 1}
                     elif isinstance(v, dict) and "text" in v:
-                        # Handle text/datafile properties
-                        plexos_record[k] = v
+                        properties[k] = v
 
-                plexos_record["name"] = comp.name  # Keep the name field
+                plexos_record = {"name": comp.name, "properties": properties}
                 plexos_records.append(plexos_record)
 
             if not plexos_records:

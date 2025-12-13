@@ -78,7 +78,6 @@ __all__ = [
     "PLEXOSVariable",
     "PLEXOSZone",
     "PropertySpecification",
-    "PropertyValue",
     "get_field_name_by_alias",
     "get_horizon",
     "get_scenario_priority",

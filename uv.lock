@@ -960,14 +960,14 @@ wheels = [
 
 [[package]]
 name = "plexosdb"
-version = "1.1.3"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "loguru" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/6e/487de0c2101b2f86ed36af508ad2551b257f93f58a690b1f7a23971e40c2/plexosdb-1.1.3.tar.gz", hash = "sha256:7bb2ae47ad1b9c84117151560bb67f264d80087baec388c065d14d952c8b2a8e", size = 133348, upload-time = "2025-10-19T19:05:08.119Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/43/fa05e53424133cd01cdb09ab9f823138c6aecf8b839f3ddabffb78ac5cc2/plexosdb-1.3.0.tar.gz", hash = "sha256:71ecbcf4c505d8a446ea7fbcc14fe077f20a2ceb874ab9156d9ac74a8d4c3550", size = 48882, upload-time = "2025-12-11T18:38:37.828Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ba/bd/b7f0715c2128d37c9ff3acc901d9bfd5a8a0f6d8a52122bafed3a3a851ca/plexosdb-1.1.3-py3-none-any.whl", hash = "sha256:ad2e769eeb636441faeae541250d57f8255310508cc27aab99ae6c7c670527ea", size = 48691, upload-time = "2025-10-19T19:05:06.738Z" },
+    { url = "https://files.pythonhosted.org/packages/05/e5/190634b0b9a65ac3a951004bb24b1e60ef546d31961f27bc16e086dc76d1/plexosdb-1.3.0-py3-none-any.whl", hash = "sha256:b527b6476530262ca81f35032bac809de145ad458c4d7f2d5a8b7c1629f7be6e", size = 52771, upload-time = "2025-12-11T18:38:35.777Z" },
 ]
 
 [[package]]

@@ -179,6 +179,7 @@ class PLEXOSExporter(BaseExporter):
 
         for component_type in self.system.get_component_types():
             if component_type in skip_types:
+                logger.debug(f"Skipping component type: {component_type.__name__}")
                 continue
 
             class_enum = PLEXOS_TYPE_MAP_INVERTED.get(cast(type[PLEXOSObject], component_type))
@@ -188,6 +189,7 @@ class PLEXOSExporter(BaseExporter):
 
             components = list(self.system.get_components(component_type))
             if not components:
+                logger.debug(f"No components found for type: {component_type.__name__}, skipping.")
                 continue
 
             logger.debug(f"Adding {len(components)} {component_type.__name__} components")
@@ -380,12 +382,14 @@ class PLEXOSExporter(BaseExporter):
 
         for membership in memberships:
             if not membership.parent_object or not membership.child_object:
+                logger.info("Skipping membership with missing parent or child object")
                 continue
 
             parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(membership.parent_object))
             child_class = PLEXOS_TYPE_MAP_INVERTED.get(type(membership.child_object))
 
             if not parent_class or not child_class or not membership.collection:
+                logger.info("Skipping membership with unmapped classes or missing collection")
                 continue
 
             if parent_class in (ClassEnum.Model, ClassEnum.Horizon) or child_class in (
@@ -408,6 +412,7 @@ class PLEXOSExporter(BaseExporter):
 
                 if membership_key in seen_memberships:
                     duplicate_count += 1
+                    logger.info("Skipping duplicate membership: {}", membership_key)
                     continue
 
                 seen_memberships.add(membership_key)
@@ -422,6 +427,7 @@ class PLEXOSExporter(BaseExporter):
                 records.append(record)
 
             except Exception:
+                logger.debug("Failed to process membership: {}", membership)
                 continue
 
         if not records:

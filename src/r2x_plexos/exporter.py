@@ -37,6 +37,7 @@ class PLEXOSExporter(BaseExporter):
         *args: Any,
         data_store: DataStore | None = None,
         plexos_scenario: str = "default",
+        output_path: str | None = None,
         xml_fname: str | None = None,
         exclude_defaults: bool = True,
         db: PlexosDB | None = None,  # Allow passing existing DB for testing
@@ -57,7 +58,7 @@ class PLEXOSExporter(BaseExporter):
             )
             raise TypeError(msg)
         self.config: PLEXOSConfig
-
+        self.output_path = output_path
         self.plexos_scenario = plexos_scenario or self.config.model_name
 
         # Use provided DB if available (for testing), otherwise create from XML
@@ -234,8 +235,8 @@ class PLEXOSExporter(BaseExporter):
             logger.error("Failed to export time series: {}", ts_result.error)
             return ts_result
 
-        output_dir = get_output_directory(self.config, self.system)
-        base_folder = output_dir.parent
+        output_dir = get_output_directory(self.config, self.system, output_path=self.output_path)
+        base_folder = Path(self.output_path) if self.output_path else output_dir.parent
         xml_filename = f"{self.config.model_name}.xml"
         xml_path = base_folder / xml_filename
 
@@ -283,7 +284,7 @@ class PLEXOSExporter(BaseExporter):
         ts_metadata_sorted = sorted(ts_metadata, key=_grouping_key)
 
         csv_filepaths: list[Path] = []
-        output_dir = get_output_directory(self.config, self.system)
+        output_dir = get_output_directory(self.config, self.system, output_path=self.output_path)
 
         for group_key, group_items in groupby(ts_metadata_sorted, key=_grouping_key):
             field_name, features_tuple = group_key
@@ -412,7 +413,6 @@ class PLEXOSExporter(BaseExporter):
 
                 if membership_key in seen_memberships:
                     duplicate_count += 1
-                    logger.info("Skipping duplicate membership: {}", membership_key)
                     continue
 
                 seen_memberships.add(membership_key)

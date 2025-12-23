@@ -18,9 +18,18 @@ def get_component_category(component: PLEXOSObject) -> str | None:
     return component.category if hasattr(component, "category") else "-"
 
 
-def get_output_directory(config: PLEXOSConfig, system: System) -> Path:
+def get_output_directory(
+    config: PLEXOSConfig,
+    system: System,
+    output_path: str | None = None,
+) -> Path:
     """Get the output directory for time series CSV files."""
-    base_folder = Path(config.timeseries_dir) if config.timeseries_dir else Path.cwd()
+    if output_path:
+        base_folder = Path(output_path)
+        if not base_folder.exists():
+            base_folder.mkdir(parents=True, exist_ok=True)
+    else:
+        base_folder = Path(config.timeseries_dir) if config.timeseries_dir else Path.cwd()
     datafiles_dir = base_folder / "datafiles"
     datafiles_dir.mkdir(parents=True, exist_ok=True)
     return datafiles_dir

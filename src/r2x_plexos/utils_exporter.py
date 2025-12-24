@@ -30,7 +30,7 @@ def get_output_directory(
             base_folder.mkdir(parents=True, exist_ok=True)
     else:
         base_folder = Path(config.timeseries_dir) if config.timeseries_dir else Path.cwd()
-    datafiles_dir = base_folder / "datafiles"
+    datafiles_dir = base_folder / "Data"
     datafiles_dir.mkdir(parents=True, exist_ok=True)
     return datafiles_dir
 

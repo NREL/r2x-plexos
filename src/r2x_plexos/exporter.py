@@ -352,8 +352,10 @@ class PLEXOSExporter(BaseExporter):
                     elif isinstance(v, dict) and "text" in v:
                         properties[k] = v
 
-                plexos_record = {"name": comp.name, "properties": properties}
-                plexos_records.append(plexos_record)
+                # Only add record if properties is not empty
+                if properties:
+                    plexos_record = {"name": comp.name, "properties": properties}
+                    plexos_records.append(plexos_record)
 
             if not plexos_records:
                 continue

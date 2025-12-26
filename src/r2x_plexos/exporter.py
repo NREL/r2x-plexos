@@ -37,6 +37,7 @@ class PLEXOSExporter(BaseExporter):
         *args: Any,
         data_store: DataStore | None = None,
         plexos_scenario: str = "default",
+        output_path: str | None = None,
         xml_fname: str | None = None,
         exclude_defaults: bool = True,
         db: PlexosDB | None = None,  # Allow passing existing DB for testing
@@ -57,7 +58,7 @@ class PLEXOSExporter(BaseExporter):
             )
             raise TypeError(msg)
         self.config: PLEXOSConfig
-
+        self.output_path = output_path
         self.plexos_scenario = plexos_scenario or self.config.model_name
 
         # Use provided DB if available (for testing), otherwise create from XML
@@ -179,6 +180,7 @@ class PLEXOSExporter(BaseExporter):
 
         for component_type in self.system.get_component_types():
             if component_type in skip_types:
+                logger.debug(f"Skipping component type: {component_type.__name__}")
                 continue
 
             class_enum = PLEXOS_TYPE_MAP_INVERTED.get(cast(type[PLEXOSObject], component_type))
@@ -188,6 +190,7 @@ class PLEXOSExporter(BaseExporter):
 
             components = list(self.system.get_components(component_type))
             if not components:
+                logger.debug(f"No components found for type: {component_type.__name__}, skipping.")
                 continue
 
             logger.debug(f"Adding {len(components)} {component_type.__name__} components")
@@ -232,8 +235,8 @@ class PLEXOSExporter(BaseExporter):
             logger.error("Failed to export time series: {}", ts_result.error)
             return ts_result
 
-        output_dir = get_output_directory(self.config, self.system)
-        base_folder = output_dir.parent
+        output_dir = get_output_directory(self.config, self.system, output_path=self.output_path)
+        base_folder = Path(self.output_path) if self.output_path else output_dir.parent
         xml_filename = f"{self.config.model_name}.xml"
         xml_path = base_folder / xml_filename
 
@@ -275,13 +278,13 @@ class PLEXOSExporter(BaseExporter):
 
         def _grouping_key(item: tuple[Any, Any]) -> tuple[str, tuple[tuple[str, Any], ...]]:
             """Sort by component_type."""
-            _component, ts_key = item
+            _, ts_key = item
             return (ts_key.name, tuple(sorted(ts_key.features.items())))
 
         ts_metadata_sorted = sorted(ts_metadata, key=_grouping_key)
 
         csv_filepaths: list[Path] = []
-        output_dir = get_output_directory(self.config, self.system)
+        output_dir = get_output_directory(self.config, self.system, output_path=self.output_path)
 
         for group_key, group_items in groupby(ts_metadata_sorted, key=_grouping_key):
             field_name, features_tuple = group_key
@@ -340,18 +343,19 @@ class PLEXOSExporter(BaseExporter):
             for comp in self.system.get_components(component_type):
                 aliased_dict = comp.model_dump(by_alias=True, exclude_defaults=self.exclude_defaults)
 
-                plexos_record: dict[str, Any] = {}
+                properties: dict[str, Any] = {}
                 for k, v in aliased_dict.items():
                     if k in metadata_fields or v is None:
                         continue
                     if isinstance(v, int | float | str | bool):
-                        plexos_record[k] = v
+                        properties[k] = {"value": v, "band": 1}
                     elif isinstance(v, dict) and "text" in v:
-                        # Handle text/datafile properties
-                        plexos_record[k] = v
+                        properties[k] = v
 
-                plexos_record["name"] = comp.name  # Keep the name field
-                plexos_records.append(plexos_record)
+                # Only add record if properties is not empty
+                if properties:
+                    plexos_record = {"name": comp.name, "properties": properties}
+                    plexos_records.append(plexos_record)
 
             if not plexos_records:
                 continue
@@ -381,12 +385,14 @@ class PLEXOSExporter(BaseExporter):
 
         for membership in memberships:
             if not membership.parent_object or not membership.child_object:
+                logger.info("Skipping membership with missing parent or child object")
                 continue
 
             parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(membership.parent_object))
             child_class = PLEXOS_TYPE_MAP_INVERTED.get(type(membership.child_object))
 
             if not parent_class or not child_class or not membership.collection:
+                logger.info("Skipping membership with unmapped classes or missing collection")
                 continue
 
             if parent_class in (ClassEnum.Model, ClassEnum.Horizon) or child_class in (
@@ -423,6 +429,7 @@ class PLEXOSExporter(BaseExporter):
                 records.append(record)
 
             except Exception:
+                logger.debug("Failed to process membership: {}", membership)
                 continue
 
         if not records:

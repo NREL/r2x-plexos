@@ -17,6 +17,7 @@ from .models import (
     PLEXOSScenario,
     PLEXOSStorage,
     PLEXOSTimeslice,
+    PLEXOSTransformer,
     PLEXOSVariable,
     PLEXOSZone,
 )
@@ -35,6 +36,7 @@ PLEXOS_TYPE_MAP: dict[ClassEnum, type[PLEXOSObject]] = {
     ClassEnum.Zone: PLEXOSZone,
     ClassEnum.Interface: PLEXOSInterface,
     ClassEnum.Timeslice: PLEXOSTimeslice,
+    ClassEnum.Transformer: PLEXOSTransformer,
     ClassEnum.Model: PLEXOSModel,
     ClassEnum.Horizon: PLEXOSHorizon,
 }

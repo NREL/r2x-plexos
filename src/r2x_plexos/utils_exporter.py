@@ -64,7 +64,7 @@ def export_time_series_csv(
     if not time_series_data:
         raise ValueError("No time series data provided")
 
-    _first_name, first_ts = time_series_data[0]
+    _, first_ts = time_series_data[0]
     initial_timestamp = first_ts.initial_timestamp
     resolution = first_ts.resolution
     data_length = len(first_ts.data)

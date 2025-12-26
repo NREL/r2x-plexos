@@ -278,7 +278,7 @@ class PLEXOSExporter(BaseExporter):
 
         def _grouping_key(item: tuple[Any, Any]) -> tuple[str, tuple[tuple[str, Any], ...]]:
             """Sort by component_type."""
-            _component, ts_key = item
+            _, ts_key = item
             return (ts_key.name, tuple(sorted(ts_key.features.items())))
 
         ts_metadata_sorted = sorted(ts_metadata, key=_grouping_key)

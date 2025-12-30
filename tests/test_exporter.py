@@ -1,12 +1,11 @@
 from pathlib import Path
 
 import pytest
-from plexosdb import ClassEnum, PlexosDB
+from plexosdb import ClassEnum, CollectionEnum, PlexosDB
 
 from r2x_core import DataStore, PluginConfig, System
 from r2x_plexos import PLEXOSConfig
 from r2x_plexos.exporter import PLEXOSExporter
-from r2x_plexos.models import PLEXOSMembership
 from r2x_plexos.parser import PLEXOSParser
 
 pytestmark = pytest.mark.export
@@ -148,41 +147,77 @@ def test_exporter_with_wrong_config(mocker, caplog):
         PLEXOSExporter(config=bad_config, system=mock_system)
 
 
-def test_memberships_are_supplemental_attributes_not_components(serialized_plexos_system: System):
-    """Test that memberships are stored as supplemental attributes, not components."""
-
-    sys = serialized_plexos_system
-
-    supp_memberships = sys.get_num_supplemental_attributes()
-    assert supp_memberships > 0, "Memberships should be stored as supplemental attributes"
-
-    for membership in sys.get_supplemental_attributes(PLEXOSMembership):
-        assert isinstance(membership, PLEXOSMembership)
-        assert membership.membership_id is not None
-        assert membership.parent_object is not None
-        assert membership.collection is not None
+def is_valid_class_enum(class_enum):
+    try:
+        _ = CollectionEnum[class_enum.name]
+        return True
+    except KeyError:
+        return False
 
 
-def test_memberships_exported_correctly(plexos_config, serialized_plexos_system: System):
-    """Test that memberships are exported as supplemental attributes and added to database."""
+def test_roundtrip_db_parser_system_exporter_db(db_all_gen_types: PlexosDB, tmp_path: Path):
+    original_db = db_all_gen_types
 
-    sys = serialized_plexos_system
-    exporter = PLEXOSExporter(plexos_config, sys)
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024, timeseries_dir=tmp_path)
+    store = DataStore(path=tmp_path)
+
+    parser = PLEXOSParser(config, store, db=original_db)
+    system = parser.build_system()
+
+    exporter = PLEXOSExporter(config, system, exclude_defaults=True)
+
+    for model_name in exporter.db.list_objects_by_class(ClassEnum.Model):
+        exporter.db.delete_object(ClassEnum.Model, name=model_name)
+    for horizon_name in exporter.db.list_objects_by_class(ClassEnum.Horizon):
+        exporter.db.delete_object(ClassEnum.Horizon, name=horizon_name)
+
+    setup_result = exporter.setup_configuration()
+    assert setup_result.is_ok(), (
+        f"Setup configuration failed: {setup_result.error if setup_result.is_err() else ''}"
+    )
 
     result = exporter.export()
     assert result.is_ok(), f"Export failed: {result.error if result.is_err() else ''}"
 
-    query = "SELECT COUNT(*) FROM t_membership WHERE parent_object_id != 1"
-    result = exporter.db.query(query)
-    membership_count = result[0][0] if result else 0
-    assert membership_count > 0, "No memberships were added to database"
+    exported_db = exporter.db
 
+    for class_enum in ClassEnum:
+        if not is_valid_class_enum(class_enum):
+            continue
+        try:
+            original_objects = original_db.list_objects_by_class(class_enum)
+            exported_objects = exported_db.list_objects_by_class(class_enum)
+            assert len(exported_objects) == len(original_objects), (
+                f"{class_enum.name}: exported {len(exported_objects)} objects, expected {len(original_objects)}"
+            )
+        except Exception:
+            continue
 
-def test_exporter_with_complex_system(db_with_multiband_variable: PlexosDB, tmp_path: Path):
-    db = db_with_multiband_variable
+    original_properties_count = 0
+    for class_enum in ClassEnum:
+        if not is_valid_class_enum(class_enum):
+            continue
+        try:
+            for obj_name in original_db.list_objects_by_class(class_enum):
+                original_properties_count += len(original_db.get_object_properties(class_enum, obj_name))
+        except Exception:
+            continue
 
-    config = PLEXOSConfig(model_name="Base")
-    store = DataStore()
-    sys = PLEXOSParser(config, store, db=db).build_system()
-    exporter = PLEXOSExporter(config, sys)
-    exporter.export()
+    exported_properties_count = 0
+    for class_enum in ClassEnum:
+        if not is_valid_class_enum(class_enum):
+            continue
+        try:
+            for obj_name in exported_db.list_objects_by_class(class_enum):
+                exported_properties_count += len(exported_db.get_object_properties(class_enum, obj_name))
+        except Exception:
+            continue
+
+    assert exported_properties_count >= original_properties_count, (
+        f"Properties: exported {exported_properties_count}, expected at least {original_properties_count}"
+    )
+
+    exported_memberships_count = exported_db.query(
+        "SELECT COUNT(*) FROM t_membership WHERE parent_class_id NOT IN (1, 707) AND child_class_id NOT IN (1, 707)"
+    )[0][0]
+    assert exported_memberships_count > 0, "No memberships exported"

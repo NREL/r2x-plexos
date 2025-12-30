@@ -385,7 +385,7 @@ class PLEXOSExporter(BaseExporter):
 
         for membership in memberships:
             if not membership.parent_object or not membership.child_object:
-                logger.info("Skipping membership with missing parent or child object")
+                logger.debug("Skipping membership with missing parent or child object")
                 continue
 
             parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(membership.parent_object))

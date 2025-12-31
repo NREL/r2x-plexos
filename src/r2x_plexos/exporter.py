@@ -1,5 +1,6 @@
 """Export PLEXOS system to XML."""
 
+import os
 from itertools import groupby
 from pathlib import Path
 from typing import Any, cast
@@ -225,6 +226,8 @@ class PLEXOSExporter(BaseExporter):
         """
         logger.info("Adding properties and memberships")
 
+        self._add_datafile_objects_to_db()
+
         self._add_component_properties()
         self._add_memberships()
 
@@ -311,7 +314,6 @@ class PLEXOSExporter(BaseExporter):
                 return Err(ExporterError(f"Time series export failed: {result.error}"))
 
         logger.info(f"Exported {len(csv_filepaths)} time series files to {output_dir}")
-        self._sync_datafile_objects(csv_filepaths)
 
         return Ok(None)
 
@@ -320,12 +322,23 @@ class PLEXOSExporter(BaseExporter):
         return Ok(None)
 
     def _add_component_properties(self) -> None:
-        """Add properties for components.
+        """Add properties for all components, including DataFile objects first."""
+        logger.info("Adding component properties...")
 
-        Skips configuration objects that don't have properties:
-        - PLEXOSModel, PLEXOSHorizon: only have attributes, not properties
-        - PLEXOSDatafile, PLEXOSMembership: configuration objects
-        """
+        # Add properties for PlexosDataFile objects firstb
+        for component in self.system.get_components(PLEXOSDatafile):
+            datafile_text = component.name
+
+            self.db.add_property(
+                ClassEnum.DataFile,
+                object_name=component.name,
+                name="Filename",
+                value=0,
+                datafile_text=datafile_text,
+            )
+            logger.debug(f"Added Filename property for DataFile: {component.name}")
+
+        # Add properties for each component type except Datafile and Membership
         skip_types = {PLEXOSModel, PLEXOSHorizon, PLEXOSDatafile, PLEXOSMembership}
 
         for component_type in self.system.get_component_types():
@@ -336,23 +349,20 @@ class PLEXOSExporter(BaseExporter):
             if not class_enum:
                 continue
 
-            # Convert records to use PLEXOS property names (aliases) and filter metadata
-            metadata_fields = {"name", "category", "uuid", "label", "description", "object_id"}
+            collection = get_default_collection(class_enum)
             plexos_records = []
 
             for comp in self.system.get_components(component_type):
                 aliased_dict = comp.model_dump(by_alias=True, exclude_defaults=self.exclude_defaults)
-
+                metadata_fields = {"name", "category", "uuid", "label", "description", "object_id"}
                 properties: dict[str, Any] = {}
                 for k, v in aliased_dict.items():
                     if k in metadata_fields or v is None:
                         continue
-                    if isinstance(v, int | float | str | bool):
+                    if isinstance(v, (int, float, str, bool)):
                         properties[k] = {"value": v, "band": 1}
                     elif isinstance(v, dict) and "text" in v:
                         properties[k] = v
-
-                # Only add record if properties is not empty
                 if properties:
                     plexos_record = {"name": comp.name, "properties": properties}
                     plexos_records.append(plexos_record)
@@ -361,8 +371,6 @@ class PLEXOSExporter(BaseExporter):
                 continue
 
             logger.debug(f"Adding properties for {len(plexos_records)} {component_type.__name__} components")
-
-            collection = get_default_collection(class_enum)
             self.db.add_properties_from_records(
                 plexos_records,
                 object_class=class_enum,
@@ -439,26 +447,69 @@ class PLEXOSExporter(BaseExporter):
         self.db.add_memberships_from_records(records)
         logger.success(f"Successfully added {len(records)} memberships")
 
-    def _sync_datafile_objects(self, csv_filepaths: list[Path]) -> None:
-        """Create or update PLEXOSDatafile objects for exported CSVs."""
-        existing_datafiles = {df.name: df for df in self.system.get_components(PLEXOSDatafile)}
+    def _create_datafile_objects(self) -> None:
+        """Create DataFile objects for the CSVs that are being created."""
+        logger.info("Creating DataFile objects...")
 
-        for filepath in csv_filepaths:
-            stem = filepath.stem
+        output_path = self.output_path or "."
+        time_series_dir = os.path.join(output_path, "Data")
+        if not os.path.exists(time_series_dir):
+            logger.info(f"No time series directory found at {time_series_dir}")
+            return
 
-            if stem not in existing_datafiles:
-                prop_value = PLEXOSPropertyValue()
-                prop_value.add_entry(value=0.0, text=str(filepath))
-                datafile = PLEXOSDatafile(name=stem, filename=prop_value)
-                self.system.add_component(datafile)
-                logger.debug(f"Created PLEXOSDatafile object for {filepath.name}")
-            else:
-                existing_df = existing_datafiles[stem]
-                if not isinstance(existing_df.filename, PLEXOSPropertyValue):
-                    prop_value = PLEXOSPropertyValue()
-                    existing_df.filename = prop_value
-                else:
-                    prop_value = existing_df.filename
+        for filename in os.listdir(time_series_dir):
+            if filename.endswith(".csv"):
+                file_path = os.path.join("Data", filename)
+                datafile_obj = PLEXOSDatafile(
+                    name=filename.removesuffix(".csv"),
+                    filename=PLEXOSPropertyValue.from_dict({"datafile_name": file_path}),
+                )
+                if not self.system.has_component(datafile_obj):
+                    self.system.add_component(datafile_obj)
 
-                prop_value.add_entry(value=0.0, text=str(filepath))
-                logger.debug(f"Updated PLEXOSDatafile object for {filepath.name}")
+    def _add_datafile_objects_to_db(self) -> None:
+        """Add PLEXOSDatafile objects from the system to the database."""
+        self._create_datafile_objects()
+        datafiles = list(self.system.get_components(PLEXOSDatafile))
+        if not datafiles:
+            logger.info("No PLEXOSDatafile objects to add to DB.")
+            return
+
+        # Add DataFile objects to the DB
+        names = [df.name for df in datafiles]
+        self.db.add_objects(ClassEnum.DataFile, *names, category="CSV")
+
+        # Assign object IDs to the DataFile objects and their filename property
+        for data_file in datafiles:
+            object_id = self.db.get_object_id(ClassEnum.DataFile, data_file.name)
+            data_file.object_id = object_id
+            if data_file.filename is not None and hasattr(data_file.filename, "datafile_id"):
+                data_file.filename.datafile_id = object_id
+
+    def _insert_component_tags(self, component_type: type["PLEXOSObject"]) -> None:
+        for component in self.system.get_components(
+            component_type,
+            filter_func=lambda x: self.system.has_time_series(x),
+        ):
+            attr_list = self.system.list_time_series_keys(component)
+            for attr in attr_list:
+                attr_value = getattr(component, attr.name)
+                if (
+                    getattr(attr_value, "datafile_id", None) is not None
+                    or getattr(attr_value, "variable_id", None) is not None
+                ):
+                    object_data_ids = self.db.get_object_data_ids(
+                        PLEXOS_TYPE_MAP_INVERTED[component_type],
+                        component.name,
+                        property_names=component_type.model_fields[attr.name].alias,
+                    )
+
+                    for object_data_id in object_data_ids:
+                        if getattr(attr_value, "datafile_id", None) is not None:
+                            self._insert_tag(attr_value.datafile_id, object_data_id)
+                        if getattr(attr_value, "variable_id", None) is not None:
+                            self._insert_tag(attr_value.variable_id, object_data_id)
+
+    def _insert_tag(self, object_id: int, data_id: int) -> None:
+        query = "INSERT INTO t_tag (object_id, data_id) VALUES (?, ?)"
+        self.db._db.execute(query, (object_id, data_id))

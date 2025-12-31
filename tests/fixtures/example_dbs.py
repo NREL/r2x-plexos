@@ -84,9 +84,7 @@ def db_solar_gen_with_profile(db_with_topology, datetime_single_component_data):
     )
 
     db.add_property(ClassEnum.Generator, "solar-01", "Max Capacity", 50.0, band=1)
-    db.add_property(
-        ClassEnum.Generator, "solar-01", "Rating", 0.0, band=1, text={ClassEnum.DataFile: str(profile_path)}
-    )
+    db.add_property(ClassEnum.Generator, "solar-01", "Rating", 0.0, band=1, datafile_text=str(profile_path))
 
     yield db
 
@@ -101,9 +99,7 @@ def db_wind_gen_with_profile(db_with_topology, datetime_single_component_data):
     )
 
     db.add_property(ClassEnum.Generator, "wind-01", "Max Capacity", 75.0, band=1)
-    db.add_property(
-        ClassEnum.Generator, "wind-01", "Rating", 0.0, band=1, text={ClassEnum.DataFile: str(profile_path)}
-    )
+    db.add_property(ClassEnum.Generator, "wind-01", "Rating", 0.0, band=1, datafile_text=str(profile_path))
 
     yield db
 
@@ -129,7 +125,7 @@ def db_all_gen_types(db_with_topology, datetime_single_component_data):
         "Rating",
         0.0,
         band=1,
-        text={ClassEnum.DataFile: str(solar_profile_path)},
+        datafile_text=str(solar_profile_path),
     )
 
     wind_profile_path = datetime_single_component_data(
@@ -142,7 +138,7 @@ def db_all_gen_types(db_with_topology, datetime_single_component_data):
         "Rating",
         0.0,
         band=1,
-        text={ClassEnum.DataFile: str(wind_profile_path)},
+        datafile_text=str(wind_profile_path),
     )
 
     yield db
@@ -171,9 +167,7 @@ def db_with_variable_monthly(db_base, monthly_component_data):
 
     datafile_name = "Ratings"
     datafile_id = db.add_object(ClassEnum.DataFile, datafile_name)
-    db.add_property(
-        ClassEnum.DataFile, datafile_name, "Filename", value=0, text={ClassEnum.DataFile: str(datafile_path)}
-    )
+    db.add_property(ClassEnum.DataFile, datafile_name, "Filename", value=0, datafile_text=str(datafile_path))
 
     variable_name = "RatingMultiplier"
     variable_id = db.add_object(ClassEnum.Variable, variable_name)
@@ -189,7 +183,7 @@ def db_with_variable_monthly(db_base, monthly_component_data):
         "TestGen",
         "Rating",
         value=0.0,
-        text={ClassEnum.DataFile: datafile_name},
+        datafile_text=datafile_name,
         collection_enum=CollectionEnum.Generators,
     )
     db._db.execute("INSERT INTO t_band(band_id,data_id) VALUES (?,?)", (1, gen_rating_id))
@@ -236,7 +230,7 @@ def db_with_reserve_collection_property(db_with_topology, datetime_single_compon
         "region-01",
         "LOLP Target",
         0.0,
-        text={ClassEnum.DataFile: str(lolp_profile_path)},
+        datafile_text=str(lolp_profile_path),
         collection_enum=CollectionEnum.Regions,
         parent_class_enum=ClassEnum.Reserve,
         parent_object_name="TestReserve",
@@ -266,7 +260,7 @@ def db_with_multiband_variable(db_base: PlexosDB, multi_year_data_file):
             datafile_name,
             "Filename",
             value=0.0,
-            text={ClassEnum.DataFile: multi_year_data_file[idx % len(multi_year_data_file)]},
+            datafile_text=multi_year_data_file[idx % len(multi_year_data_file)],
             band=band,
             scenario=scenario,
         )
@@ -284,7 +278,7 @@ def db_with_multiband_variable(db_base: PlexosDB, multi_year_data_file):
             value=0.0,
             band=band,
             scenario=scenario,
-            text={ClassEnum.DataFile: multi_year_data_file[idx % len(multi_year_data_file)]},
+            datafile_text=multi_year_data_file[idx % len(multi_year_data_file)],
         )
         db._db.execute(
             "INSERT INTO t_tag(object_id,data_id,action_id) VALUES (?,?,?)",

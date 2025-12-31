@@ -73,7 +73,7 @@ def xml_with_multi_weather_chrono(tmp_path, year_daily_hour):
             datafile_name,
             "Filename",
             value=0,
-            text={ClassEnum.DataFile: str(year_daily_hour)},
+            datafile_text=str(year_daily_hour),
             band=1,
             scenario=scenario,
         )

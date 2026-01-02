@@ -226,12 +226,10 @@ class PLEXOSExporter(BaseExporter):
         """
         logger.info("Adding properties and memberships")
 
-        self._add_datafile_objects_to_db()
-
+        self._add_component_datafile_objects()
         self._add_component_properties()
-        self._add_memberships()
+        self._add_component_memberships()
 
-        # Export time series before finalizing XML
         logger.info("Exporting time series")
         ts_result = self.export_time_series()
         if isinstance(ts_result, Err):
@@ -245,6 +243,12 @@ class PLEXOSExporter(BaseExporter):
 
         logger.info(f"Exporting XML to {xml_path}")
         self.db.to_xml(xml_path)
+
+        if not self._validate_xml(str(xml_path)):
+            logger.error(f"Exported XML at {xml_path} is not valid!")
+            return Err(ExporterError(f"Exported XML at {xml_path} is not valid!"))
+        else:
+            logger.success("Exported XML was correctly validated.")
 
         return Ok(None)
 
@@ -379,7 +383,7 @@ class PLEXOSExporter(BaseExporter):
                 scenario=self.plexos_scenario,
             )
 
-    def _add_memberships(self) -> None:
+    def _add_component_memberships(self) -> None:
         """Add membership relationships to the database."""
         memberships = list(self.system.get_supplemental_attributes(PLEXOSMembership))
 
@@ -467,7 +471,7 @@ class PLEXOSExporter(BaseExporter):
                 if not self.system.has_component(datafile_obj):
                     self.system.add_component(datafile_obj)
 
-    def _add_datafile_objects_to_db(self) -> None:
+    def _add_component_datafile_objects(self) -> None:
         """Add PLEXOSDatafile objects from the system to the database."""
         self._create_datafile_objects()
         datafiles = list(self.system.get_components(PLEXOSDatafile))
@@ -475,16 +479,18 @@ class PLEXOSExporter(BaseExporter):
             logger.info("No PLEXOSDatafile objects to add to DB.")
             return
 
-        # Add DataFile objects to the DB
+        logger.debug(f"Adding {len(datafiles)} PLEXOSDatafile objects to DB.")
+
         names = [df.name for df in datafiles]
         self.db.add_objects(ClassEnum.DataFile, *names, category="CSV")
 
-        # Assign object IDs to the DataFile objects and their filename property
         for data_file in datafiles:
             object_id = self.db.get_object_id(ClassEnum.DataFile, data_file.name)
             data_file.object_id = object_id
             if data_file.filename is not None and hasattr(data_file.filename, "datafile_id"):
                 data_file.filename.datafile_id = object_id
+            else:
+                logger.debug(f"DataFile {data_file.name} has no filename property to update.")
 
     def _insert_component_tags(self, component_type: type["PLEXOSObject"]) -> None:
         for component in self.system.get_components(
@@ -513,3 +519,14 @@ class PLEXOSExporter(BaseExporter):
     def _insert_tag(self, object_id: int, data_id: int) -> None:
         query = "INSERT INTO t_tag (object_id, data_id) VALUES (?, ?)"
         self.db._db.execute(query, (object_id, data_id))
+
+    def _validate_xml(self, xml_path: str) -> bool:
+        """Validate XML file structure."""
+        try:
+            import xml.etree.ElementTree as ET
+
+            tree = ET.parse(xml_path)
+            _ = tree.getroot()
+            return True
+        except ET.ParseError:
+            return False

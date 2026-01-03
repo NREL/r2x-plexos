@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from plexosdb import ClassEnum, CollectionEnum, PlexosDB
 
-from r2x_core import DataStore, PluginConfig, System
+from r2x_core import DataStore, Err, PluginConfig, System
 from r2x_plexos import PLEXOSConfig
 from r2x_plexos.exporter import PLEXOSExporter
 from r2x_plexos.parser import PLEXOSParser
@@ -221,3 +221,135 @@ def test_roundtrip_db_parser_system_exporter_db(db_all_gen_types: PlexosDB, tmp_
         "SELECT COUNT(*) FROM t_membership WHERE parent_class_id NOT IN (1, 707) AND child_class_id NOT IN (1, 707)"
     )[0][0]
     assert exported_memberships_count > 0, "No memberships exported"
+
+
+def test_exporter_init_with_invalid_config_type():
+    class DummyConfig:
+        pass
+
+    with pytest.raises(TypeError):
+        PLEXOSExporter(DummyConfig(), System(name="test"))
+
+
+def test_exporter_init_with_existing_db(tmp_path, db_all_gen_types):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    exporter = PLEXOSExporter(config, sys, db=db_all_gen_types)
+    assert exporter.db is db_all_gen_types
+
+
+def test_setup_configuration_missing_simulation_config(monkeypatch):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    exporter = PLEXOSExporter(config, sys)
+    monkeypatch.setattr(exporter.config, "simulation_config", None)
+    result = exporter.setup_configuration()
+    assert result.is_ok()
+
+
+def test_prepare_export_skips_types(mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+    sys.get_component_types.return_value = []
+    exporter = PLEXOSExporter(config, sys)
+    result = exporter.prepare_export()
+    assert result.is_ok()
+
+
+def test_prepare_export_no_class_enum(mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+
+    class DummyType:
+        pass
+
+    sys.get_component_types.return_value = [DummyType]
+    exporter = PLEXOSExporter(config, sys)
+    result = exporter.prepare_export()
+    assert result.is_ok()
+
+
+def test_export_time_series_no_components(mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+    sys.get_component_types.return_value = []
+    exporter = PLEXOSExporter(config, sys)
+    result = exporter.export_time_series()
+    assert result.is_ok()
+
+
+def test_export_time_series_csv_error(mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+
+    class DummyType:
+        pass
+
+    sys.get_component_types.return_value = [DummyType]
+    sys.get_components.return_value = [mocker.Mock(name="comp")]
+    sys.has_time_series.return_value = True
+
+    ts_key = mocker.Mock()
+    ts_key.name = "ts_key"
+    ts_key.features = {}
+    sys.list_time_series_keys.return_value = [ts_key]
+    sys.get_time_series_by_key.return_value = [1, 2, 3]
+    mocker.patch("r2x_plexos.exporter.export_time_series_csv", return_value=Err("fail"))
+    exporter = PLEXOSExporter(config, sys)
+    result = exporter.export_time_series()
+    assert result.is_err()
+
+
+def test_add_component_memberships_no_memberships(mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+    sys.get_supplemental_attributes.return_value = []
+    exporter = PLEXOSExporter(config, sys)
+    exporter._add_component_memberships()
+
+
+def test_add_component_memberships_skips_invalid(mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+    membership = mocker.Mock()
+    membership.parent_object = None
+    membership.child_object = None
+    sys.get_supplemental_attributes.return_value = [membership]
+    exporter = PLEXOSExporter(config, sys)
+    exporter._add_component_memberships()
+
+
+def test_create_datafile_objects_no_dir(tmp_path, mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+    exporter = PLEXOSExporter(config, sys, output_path=str(tmp_path))
+    exporter._create_datafile_objects()
+
+
+def test_add_component_datafile_objects_no_datafiles(mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+    sys.get_components.return_value = []
+    exporter = PLEXOSExporter(config, sys)
+    exporter._add_component_datafile_objects()
+
+
+def test_add_component_datafile_objects_filename_none(mocker):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+    datafile = mocker.Mock()
+    datafile.name = "test"
+    datafile.filename = None
+    sys.get_components.return_value = [datafile]
+    exporter = PLEXOSExporter(config, sys)
+    mocker.patch.object(exporter, "_create_datafile_objects")
+    exporter._add_component_datafile_objects()
+
+
+def test_validate_xml_invalid(tmp_path):
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    exporter = PLEXOSExporter(config, sys)
+    invalid_xml = tmp_path / "invalid.xml"
+    invalid_xml.write_text("<notxml>")
+    assert not exporter._validate_xml(str(invalid_xml))

@@ -104,3 +104,32 @@ def test_priority_order():
 
     with scenario_priority({"Scenario3": 1, "Scenario2": 2, "Scenario1": 3}):
         assert prop.get_value() == 100.0
+
+
+def test_get_value_empty_property():
+    from r2x_plexos import PLEXOSPropertyValue
+
+    prop = PLEXOSPropertyValue()
+    assert prop.get_value() is None
+
+
+def test_get_value_for_missing_keys():
+    from r2x_plexos import PLEXOSPropertyValue
+
+    prop = PLEXOSPropertyValue.from_records([{"scenario": "Base", "band": 1, "value": 100}])
+    # Nonexistent scenario, timeslice, band
+    assert prop.get_value_for(scenario="Nonexistent") == 100
+    assert prop.get_value_for(timeslice="Nonexistent") == 100
+    assert prop.get_value_for(band=2) == 100
+    # All missing
+    assert prop.get_value_for(scenario="X", band=2, timeslice="Y") == 100
+
+
+def test_priority_and_context_manager():
+    from r2x_plexos import PLEXOSPropertyValue, scenario_priority
+
+    prop = PLEXOSPropertyValue.from_records([{"scenario": "A", "value": 1}, {"scenario": "B", "value": 2}])
+    with scenario_priority({"A": 2, "B": 1}):
+        assert prop.get_value() == 1
+    with scenario_priority({"A": 1, "B": 2}):
+        assert prop.get_value() == 2

@@ -116,3 +116,59 @@ def test_property_spec_plexos_property_units_injection():
 def test_property_spec_invalid_type():
     with pytest.raises(ValidationError):
         SimpleModel(value="not a number")
+
+
+def test_get_filepath_and_references():
+    from r2x_plexos import PLEXOSPropertyValue
+
+    prop_file = PLEXOSPropertyValue.from_records(
+        [
+            {"value": 1, "text": "file.csv", "text_class_name": "Data File"},
+        ]
+    )
+    assert prop_file.get_filepath() == "file.csv"
+
+    prop_var = PLEXOSPropertyValue.from_records(
+        [
+            {"value": 2, "variable_name": "var1", "variable_id": 42},
+        ]
+    )
+    assert prop_var.get_variable_reference() == {"name": "var1", "id": 42, "action": None}
+
+    prop_df = PLEXOSPropertyValue.from_records([{"value": 3, "datafile_name": "df1", "datafile_id": 99}])
+    assert prop_df.get_datafile_reference() == {"name": "df1", "id": 99}
+
+
+def test_has_methods():
+    from r2x_plexos import PLEXOSPropertyValue
+
+    # has_bands
+    prop_bands = PLEXOSPropertyValue.from_records([{"band": 1, "value": 1}, {"band": 2, "value": 2}])
+    assert prop_bands.has_bands()
+
+    # has_date_from and has_date_to
+    prop_dates = PLEXOSPropertyValue.from_records(
+        [{"value": 1, "date_from": "2024-01-01", "date_to": "2024-01-31"}]
+    )
+    assert prop_dates.has_date_from()
+    assert prop_dates.has_date_to()
+
+    # has_scenarios
+    prop_scenarios = PLEXOSPropertyValue.from_records([{"scenario": "S1", "value": 1}])
+    assert prop_scenarios.has_scenarios()
+
+    # has_timeslices
+    prop_timeslices = PLEXOSPropertyValue.from_records([{"timeslice": "T1", "value": 1}])
+    assert prop_timeslices.has_timeslices()
+
+    # has_datafile
+    prop_datafile = PLEXOSPropertyValue.from_records([{"datafile_name": "df", "value": 1}])
+    assert prop_datafile.has_datafile()
+
+    # has_variable
+    prop_variable = PLEXOSPropertyValue.from_records([{"variable_name": "v", "value": 1}])
+    assert prop_variable.has_variable()
+
+    # has_text
+    prop_text = PLEXOSPropertyValue.from_records([{"text": "abc", "value": 1}])
+    assert prop_text.has_text()

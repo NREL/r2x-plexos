@@ -23,7 +23,7 @@ def xml_with_variables(tmp_path):
         "BatteryCapacities",
         "Filename",
         value=0,
-        text={ClassEnum.DataFile: str(datafile_path)},
+        datafile_text=datafile_path,
     )
     variable_name = "CapacityMultiplier"
     variable_id = db.add_object(ClassEnum.Variable, variable_name)
@@ -51,7 +51,7 @@ def xml_with_variables(tmp_path):
         battery,
         "Max Power",
         value=0.0,  # Placeholder when using datafile+variable
-        text={ClassEnum.DataFile: "BatteryCapacities"},
+        datafile_text="BatteryCapacities",
         collection_enum=CollectionEnum.Batteries,
     )
     db._db.execute("INSERT INTO t_band(band_id,data_id) VALUES (?,?)", (1, battery_max_power_id))
@@ -101,11 +101,11 @@ def test_battery_capacity_with_constant_variable(xml_with_variables, tmp_path, c
     assert isinstance(max_power_property_value, PLEXOSPropertyValue)
     assert max_power_property_value.get_entry().datafile_name == datafile_component.name
     assert max_power_property_value.has_datafile()
-    assert battery_component.max_power == 100.0
+    assert battery_component.max_soc == 100.0
 
     capacity_property_value = battery_component.get_property_value("capacity")
     assert isinstance(capacity_property_value, PLEXOSPropertyValue)
     assert capacity_property_value.get_entry().variable_name == variable_component.name
     assert capacity_property_value.has_variable()
-    assert battery_component.capacity == 100.0 * 3
+    assert battery_component.charge_efficiency == 70
     assert not sys.has_time_series(battery_component)

@@ -493,6 +493,7 @@ class PLEXOSExporter(BaseExporter):
                 logger.debug(f"DataFile {data_file.name} has no filename property to update.")
 
     def _insert_component_tags(self, component_type: type["PLEXOSObject"]) -> None:
+        """Insert tags for all components of the given type."""
         for component in self.system.get_components(
             component_type,
             filter_func=lambda x: self.system.has_time_series(x),
@@ -517,6 +518,7 @@ class PLEXOSExporter(BaseExporter):
                             self._insert_tag(attr_value.variable_id, object_data_id)
 
     def _insert_tag(self, object_id: int, data_id: int) -> None:
+        """Insert a tag linking an object to a data file."""
         query = "INSERT INTO t_tag (object_id, data_id) VALUES (?, ?)"
         self.db._db.execute(query, (object_id, data_id))
 

@@ -1,6 +1,7 @@
 """Export PLEXOS system to XML."""
 
 import os
+from datetime import datetime, timedelta
 from itertools import groupby
 from pathlib import Path
 from typing import Any, cast
@@ -997,6 +998,13 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             break
 
                     if not matched_file:
+                        fallback_pattern = re.compile(rf"[^_]+_{re.escape(safe_ts_name)}_.*\.csv")
+                        for filename in dir_files:
+                            if fallback_pattern.match(filename):
+                                matched_file = filename
+                                break
+
+                    if not matched_file:
                         continue
 
                     datafile_name = matched_file.removesuffix(".csv")
@@ -1208,11 +1216,16 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         logger.debug(f"Found {len(ts_metadata)} time series keys total")
 
         def _grouping_key(item: tuple[Any, Any]) -> tuple:
-            """Group by variable name, initial timestamp, resolution, and features."""
-            _, ts_key = item
+            """Group by component class plus variable/time identity fields.
+
+            Including component class avoids mixing identically named series
+            across different component types.
+            """
+            component, ts_key = item
             initial_ts = getattr(ts_key, "initial_timestamp", None)
             resolution = getattr(ts_key, "resolution", None)
             return (
+                type(component).__name__,
                 ts_key.name,
                 str(initial_ts),
                 str(resolution),
@@ -1225,7 +1238,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         output_dir = get_output_directory(self.config, self.system, output_path=self.output_path)
 
         for group_key, group_items in groupby(ts_metadata_sorted, key=_grouping_key):
-            field_name, _initial_ts_str, _resolution_str, features_tuple = group_key
+            component_class, field_name, _initial_ts_str, _resolution_str, features_tuple = group_key
             metadata_dict = dict(features_tuple)
             if self.config.model_name is not None:
                 metadata_dict["model_name"] = self.config.model_name
@@ -1236,9 +1249,6 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             if self.weather_year is not None:
                 metadata_dict["weather_year"] = self.weather_year
             group_list = list(group_items)
-
-            first_component = group_list[0][0]
-            component_class = type(first_component).__name__
 
             filename = generate_csv_filename(field_name, component_class, metadata_dict)
             filepath = output_dir / filename
@@ -1253,12 +1263,62 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             "No time series found for {}.{}; skipping", component.name, ts_key.name
                         )
                         continue
-                    initial_ts = getattr(ts_key, "initial_timestamp", None)
-                    if initial_ts is not None and len(ts_list) > 1:
-                        matched = next((t for t in ts_list if t.initial_timestamp == initial_ts), None)
-                        ts = matched if matched is not None else ts_list[0]
+                    initial_ts_raw = getattr(ts_key, "initial_timestamp", None)
+                    initial_ts = initial_ts_raw if isinstance(initial_ts_raw, datetime) else None
+                    ts_resolution_raw = getattr(ts_key, "resolution", None)
+                    ts_resolution = (
+                        ts_resolution_raw if isinstance(ts_resolution_raw, timedelta) else None
+                    )
+                    if len(ts_list) > 1:
+                        matched = next(
+                            (
+                                t
+                                for t in ts_list
+                                if getattr(t, "initial_timestamp", None) == initial_ts
+                                and getattr(t, "resolution", None) == ts_resolution
+                            ),
+                            None,
+                        )
+                        if matched is None and ts_resolution is not None:
+                            matched = next(
+                                (t for t in ts_list if getattr(t, "resolution", None) == ts_resolution),
+                                None,
+                            )
+                        if matched is None and ts_resolution is None and initial_ts is not None:
+                            matched = next(
+                                (t for t in ts_list if getattr(t, "initial_timestamp", None) == initial_ts),
+                                None,
+                            )
+                        if matched is None:
+                            logger.warning(
+                                "No matching TS variant for {}.{} (initial_ts={}, resolution={}); skipping",
+                                component.name,
+                                ts_key.name,
+                                initial_ts,
+                                ts_resolution,
+                            )
+                            continue
+                        ts = matched
                     else:
                         ts = ts_list[0]
+                        if ts_resolution is not None and getattr(ts, "resolution", None) != ts_resolution:
+                            logger.warning(
+                                "TS resolution mismatch for {}.{} (expected {}, got {}); skipping",
+                                component.name,
+                                ts_key.name,
+                                ts_resolution,
+                                getattr(ts, "resolution", None),
+                            )
+                            continue
+                        if initial_ts is not None and getattr(ts, "initial_timestamp", None) != initial_ts:
+                            logger.warning(
+                                "TS initial_timestamp mismatch for {}.{} (expected {}, got {}); skipping",
+                                component.name,
+                                ts_key.name,
+                                initial_ts,
+                                getattr(ts, "initial_timestamp", None),
+                            )
+                            continue
                 except Exception as e:
                     logger.error("Failed to get time series for {}.{}: {}", component.name, ts_key.name, e)
                     continue

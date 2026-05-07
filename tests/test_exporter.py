@@ -1,4 +1,5 @@
 import contextlib
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1712,3 +1713,133 @@ def test_add_model_attributes_skips_default_values():
 
     with contextlib.suppress(Exception):
         db.get_attribute(ClassEnum.Model, object_name="TestModel", attribute_name="Random Number Seed")
+
+
+def test_export_time_series_prefers_resolution_match(mocker, tmp_path):
+    """Exporter should pick TS variant matching ts_key resolution, not first element."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_mock = mocker.Mock()
+
+    class DummyType:
+        pass
+
+    comp1 = mocker.Mock()
+    comp1.name = "HydroA"
+    type(comp1).__name__ = "PLEXOSGenerator"
+
+    comp2 = mocker.Mock()
+    comp2.name = "HydroB"
+    type(comp2).__name__ = "PLEXOSGenerator"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "hydro_budget"
+    ts_key.features = {}
+    ts_key.initial_timestamp = datetime(2024, 1, 1)
+    ts_key.resolution = timedelta(days=7)
+
+    weekly_a = mocker.Mock()
+    weekly_a.data = [1.0] * 53
+    weekly_a.initial_timestamp = ts_key.initial_timestamp
+    weekly_a.resolution = timedelta(days=7)
+
+    hourly_a = mocker.Mock()
+    hourly_a.data = [1.0] * 8760
+    hourly_a.initial_timestamp = ts_key.initial_timestamp
+    hourly_a.resolution = timedelta(hours=1)
+
+    weekly_b = mocker.Mock()
+    weekly_b.data = [2.0] * 53
+    weekly_b.initial_timestamp = ts_key.initial_timestamp
+    weekly_b.resolution = timedelta(days=7)
+
+    sys_mock.get_component_types.return_value = [DummyType]
+    sys_mock.get_components.return_value = [comp1, comp2]
+    sys_mock.has_time_series.return_value = True
+    sys_mock.list_time_series_keys.return_value = [ts_key]
+
+    def _list_ts(component, name, **features):
+        if component.name == "HydroA":
+            return [hourly_a, weekly_a]
+        return [weekly_b]
+
+    sys_mock.list_time_series.side_effect = _list_ts
+
+    ctx = PluginContext(config=config, system=sys_mock)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+
+    def _capture(filepath, ts_data):
+        assert len(ts_data) == 2
+        assert len(ts_data[0][1].data) == 53
+        assert len(ts_data[1][1].data) == 53
+        return Ok(None)
+
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=data_dir)
+    mocker.patch("r2x_plexos.exporter.export_time_series_csv", side_effect=_capture)
+
+    result = exporter.export_time_series()
+    assert result.is_ok()
+
+
+def test_export_time_series_skips_unmatched_variant(mocker, tmp_path):
+    """If no TS matches key resolution/timestamp, exporter should skip that component."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_mock = mocker.Mock()
+
+    class DummyType:
+        pass
+
+    comp1 = mocker.Mock()
+    comp1.name = "HydroA"
+    type(comp1).__name__ = "PLEXOSGenerator"
+
+    comp2 = mocker.Mock()
+    comp2.name = "HydroB"
+    type(comp2).__name__ = "PLEXOSGenerator"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "hydro_budget"
+    ts_key.features = {}
+    ts_key.initial_timestamp = datetime(2024, 1, 1)
+    ts_key.resolution = timedelta(days=7)
+
+    hourly_only = mocker.Mock()
+    hourly_only.data = [1.0] * 8760
+    hourly_only.initial_timestamp = ts_key.initial_timestamp
+    hourly_only.resolution = timedelta(hours=1)
+
+    weekly_b = mocker.Mock()
+    weekly_b.data = [2.0] * 53
+    weekly_b.initial_timestamp = ts_key.initial_timestamp
+    weekly_b.resolution = timedelta(days=7)
+
+    sys_mock.get_component_types.return_value = [DummyType]
+    sys_mock.get_components.return_value = [comp1, comp2]
+    sys_mock.has_time_series.return_value = True
+    sys_mock.list_time_series_keys.return_value = [ts_key]
+
+    def _list_ts(component, name, **features):
+        if component.name == "HydroA":
+            return [hourly_only]
+        return [weekly_b]
+
+    sys_mock.list_time_series.side_effect = _list_ts
+
+    ctx = PluginContext(config=config, system=sys_mock)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+
+    def _capture(filepath, ts_data):
+        assert [name for name, _ in ts_data] == ["HydroB"]
+        assert len(ts_data[0][1].data) == 53
+        return Ok(None)
+
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=data_dir)
+    mocker.patch("r2x_plexos.exporter.export_time_series_csv", side_effect=_capture)
+
+    result = exporter.export_time_series()
+    assert result.is_ok()

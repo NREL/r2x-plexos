@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+import pytest
 from plexosdb import ClassEnum, PlexosDB
 
 from r2x_plexos.models.simulation_config import (
@@ -19,6 +20,7 @@ from r2x_plexos.utils_simulation import (
     build_plexos_simulation,
     convert_simulation_config_to_attributes,
     datetime_to_ole_date,
+    get_enum_from_string,
     get_default_simulation_config,
     ingest_simulation_config_to_plexosdb,
     ingest_simulation_to_plexosdb,
@@ -1175,3 +1177,25 @@ def test_ingest_static_simulation_sets_base_st_deterministic(tmp_path):
     )
     assert values is not None
     assert values[0] == 0
+
+
+def test_get_enum_from_string_raises_for_no_match():
+    """No close enum member should raise KeyError."""
+    with pytest.raises(KeyError):
+        get_enum_from_string("zzzzzzzzzz", ClassEnum)
+
+
+def test_convert_simulation_config_to_attributes_returns_err_on_bad_object():
+    """Conversion should return Err when model fields cannot be read."""
+
+    class FieldInfo:
+        alias = "BROKEN"
+
+    class BrokenConfig:
+        model_fields = {"broken": FieldInfo()}
+
+        def __getattr__(self, _name):
+            raise RuntimeError("boom")
+
+    result = convert_simulation_config_to_attributes(BrokenConfig())
+    assert result.is_err()

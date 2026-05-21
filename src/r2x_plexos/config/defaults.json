@@ -147,7 +147,8 @@
       "units"
     ],
     "PLEXOSPurchaser": [
-      "units"
+      "units",
+      "fixed_load"
     ],
     "PLEXOSNode": [
       "units"

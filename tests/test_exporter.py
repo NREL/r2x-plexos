@@ -1895,3 +1895,219 @@ def test_export_time_series_hydro_budget_prefers_coarsest_when_key_mismatched(mo
 
     result = exporter.export_time_series()
     assert result.is_ok()
+
+
+def test_get_time_series_property_name_subclass_paths_use_map_values():
+    """Subclass instances should use variable map lookups instead of fixed type shortcut."""
+    from r2x_plexos.models import PLEXOSStorage
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    class StorageChild(PLEXOSStorage):
+        pass
+
+    class GeneratorChild(PLEXOSGenerator):
+        pass
+
+    storage = StorageChild(name="StorageChild")
+    generator = GeneratorChild(name="GeneratorChild", category="thermal", units=1, rating=10.0)
+
+    assert exporter._get_time_series_property_name(storage, ts_key_name="natural_inflow") is not None
+    assert exporter._get_time_series_property_name(generator, ts_key_name="max_active_power") is not None
+
+
+def test_build_generator_to_storage_map_skips_invalid_and_maps_reverse_direction(mocker):
+    """None parent/child records are ignored, and storage->generator memberships are mapped."""
+    from r2x_plexos.models import PLEXOSStorage
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_obj = System(name="test")
+    ctx = PluginContext(config=config, system=sys_obj)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    gen = PLEXOSGenerator(name="HydroGen", category="hydro", units=1, rating=100.0)
+    storage = PLEXOSStorage(name="HydroRes")
+
+    invalid_membership = mocker.Mock()
+    invalid_membership.parent_object = None
+    invalid_membership.child_object = gen
+
+    reverse_membership = PLEXOSMembership(
+        parent_object=storage, child_object=gen, collection=CollectionEnum.Generators
+    )
+
+    with patch.object(sys_obj, "get_supplemental_attributes", return_value=[invalid_membership, reverse_membership]):
+        mapping = exporter._build_generator_to_storage_map()
+
+    assert mapping["HydroGen"].name == "HydroRes"
+
+
+def test_resolve_matching_time_series_handles_exception_and_empty_results(mocker):
+    """Resolver should return None when backend query fails or returns no series."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_obj = mocker.Mock()
+    ctx = PluginContext(config=config, system=sys_obj)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    component = mocker.Mock()
+    component.name = "Gen1"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "load"
+    ts_key.features = {}
+
+    sys_obj.list_time_series.side_effect = RuntimeError("boom")
+    assert exporter._resolve_matching_time_series(component, ts_key) is None
+
+    sys_obj.list_time_series.side_effect = None
+    sys_obj.list_time_series.return_value = []
+    assert exporter._resolve_matching_time_series(component, ts_key) is None
+
+
+def test_resolve_matching_time_series_fallbacks_and_initial_timestamp_mismatch(mocker):
+    """Resolver should exercise fallback matching branches and single-item timestamp mismatch path."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_obj = mocker.Mock()
+    ctx = PluginContext(config=config, system=sys_obj)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    component = mocker.Mock()
+    component.name = "Gen1"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "load"
+    ts_key.features = {}
+    ts_key.initial_timestamp = datetime(2024, 1, 1)
+    ts_key.resolution = timedelta(hours=1)
+
+    ts_resolution_only = mocker.Mock()
+    ts_resolution_only.initial_timestamp = datetime(2025, 1, 1)
+    ts_resolution_only.resolution = timedelta(hours=1)
+
+    ts_initial_only = mocker.Mock()
+    ts_initial_only.initial_timestamp = datetime(2024, 1, 1)
+    ts_initial_only.resolution = timedelta(days=1)
+
+    sys_obj.list_time_series.return_value = [ts_initial_only, ts_resolution_only]
+    assert exporter._resolve_matching_time_series(component, ts_key) is ts_resolution_only
+
+    ts_key.resolution = "bad-type"
+    sys_obj.list_time_series.return_value = [ts_resolution_only, ts_initial_only]
+    assert exporter._resolve_matching_time_series(component, ts_key) is ts_initial_only
+
+    ts_key.resolution = timedelta(hours=1)
+    ts_key.initial_timestamp = datetime(2024, 1, 1)
+    one_ts = mocker.Mock()
+    one_ts.initial_timestamp = datetime(2024, 1, 2)
+    one_ts.resolution = timedelta(hours=1)
+    sys_obj.list_time_series.return_value = [one_ts]
+    assert exporter._resolve_matching_time_series(component, ts_key) is None
+
+
+def test_export_time_series_skips_group_when_all_series_unresolved(mocker, tmp_path):
+    """When a group resolves to no time series payload, CSV export is skipped and export still succeeds."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_obj = mocker.Mock()
+
+    class DummyType:
+        pass
+
+    component = mocker.Mock()
+    component.name = "Gen1"
+    type(component).__name__ = "PLEXOSGenerator"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "load"
+    ts_key.features = {}
+    ts_key.initial_timestamp = datetime(2024, 1, 1)
+    ts_key.resolution = timedelta(hours=1)
+
+    sys_obj.get_component_types.return_value = [DummyType]
+    sys_obj.get_components.return_value = [component]
+    sys_obj.has_time_series.return_value = True
+    sys_obj.list_time_series_keys.return_value = [ts_key]
+
+    ctx = PluginContext(config=config, system=sys_obj)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=data_dir)
+    export_csv_mock = mocker.patch("r2x_plexos.exporter.export_time_series_csv", return_value=Ok(None))
+    mocker.patch.object(exporter, "_resolve_matching_time_series", return_value=None)
+
+    result = exporter.export_time_series()
+
+    assert result.is_ok()
+    export_csv_mock.assert_not_called()
+
+
+def test_link_datafiles_to_components_links_generator_via_fallback_filename(mocker, tmp_path):
+    """Linking should use fallback filename pattern and add both generator max-power properties."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_obj = mocker.Mock()
+
+    generator = PLEXOSGenerator(name="GenA", category="thermal", units=1, rating=50.0)
+    datafile = PLEXOSDatafile(
+        name="A_max_active_power_2024",
+        filename=PLEXOSPropertyValue.from_dict({"datafile_name": "Data/A_max_active_power_2024.csv"}),
+    )
+    datafile.object_id = 101
+
+    ts_key = mocker.Mock()
+    ts_key.name = "max active power"
+    ts_key.features = {}
+
+    class DummyType:
+        pass
+
+    sys_obj.get_component_types.return_value = [DummyType]
+    sys_obj.get_components.return_value = [generator]
+    sys_obj.has_time_series.return_value = True
+    sys_obj.list_time_series_keys.return_value = [ts_key]
+
+    def _get_component(component_type, name):
+        if component_type is PLEXOSDatafile and name == "A_max_active_power_2024":
+            return datafile
+        return None
+
+    sys_obj.get_component.side_effect = _get_component
+    sys_obj.get_supplemental_attributes.return_value = []
+
+    ctx = PluginContext(config=config, system=sys_obj)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    db = mocker.Mock()
+    db._db = mocker.Mock()
+    exporter.db = db
+
+    output_dir = tmp_path / "Data"
+    output_dir.mkdir()
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=output_dir)
+    mocker.patch("r2x_plexos.exporter.os.listdir", return_value=["A_max_active_power_2024.csv"])
+    mocker.patch.object(exporter, "_resolve_matching_time_series", return_value=None)
+
+    exporter._link_datafiles_to_components()
+
+    property_names = {call.kwargs.get("name") for call in db.add_property.call_args_list}
+    assert "Rating" in property_names
+    assert "Load Subtracter" in property_names
+
+
+def test_resolve_template_path_uses_packaged_filename_when_present(tmp_path):
+    """A bare filename should resolve from the config package directory when present."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024, template="custom_template.xml")
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    packaged_template = tmp_path / "custom_template.xml"
+    packaged_template.write_text("<xml></xml>")
+
+    with patch.object(PLEXOSConfig, "get_config_path", return_value=tmp_path):
+        resolved = exporter._resolve_template_path()
+
+    assert resolved == packaged_template

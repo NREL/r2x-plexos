@@ -418,6 +418,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             return records
 
         def _normalize_value(value: Any) -> Any:
+            """Normalize property value for deduplication key."""
             # PLEXOS warnings can be triggered by duplicate values written with
             # different Python types (e.g. 23.3 vs "23.3"). Canonicalize these.
             if isinstance(value, str):

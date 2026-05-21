@@ -1843,3 +1843,55 @@ def test_export_time_series_skips_unmatched_variant(mocker, tmp_path):
 
     result = exporter.export_time_series()
     assert result.is_ok()
+
+
+def test_export_time_series_hydro_budget_prefers_coarsest_when_key_mismatched(mocker, tmp_path):
+    """Hydro budget should prefer coarser (weekly) series over hourly when key metadata is inconsistent."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_mock = mocker.Mock()
+
+    class DummyType:
+        pass
+
+    comp = mocker.Mock()
+    comp.name = "HydroA"
+    type(comp).__name__ = "PLEXOSGenerator"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "hydro_budget"
+    ts_key.features = {}
+    ts_key.initial_timestamp = datetime(2024, 1, 1)
+    ts_key.resolution = timedelta(hours=1)
+
+    weekly = mocker.Mock()
+    weekly.data = [2.0] * 53
+    weekly.initial_timestamp = ts_key.initial_timestamp
+    weekly.resolution = timedelta(days=7)
+
+    hourly = mocker.Mock()
+    hourly.data = [1.0] * 8760
+    hourly.initial_timestamp = ts_key.initial_timestamp
+    hourly.resolution = timedelta(hours=1)
+
+    sys_mock.get_component_types.return_value = [DummyType]
+    sys_mock.get_components.return_value = [comp]
+    sys_mock.has_time_series.return_value = True
+    sys_mock.list_time_series_keys.return_value = [ts_key]
+    sys_mock.list_time_series.return_value = [hourly, weekly]
+
+    ctx = PluginContext(config=config, system=sys_mock)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+
+    def _capture(filepath, ts_data):
+        assert len(ts_data) == 1
+        assert len(ts_data[0][1].data) == 53
+        return Ok(None)
+
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=data_dir)
+    mocker.patch("r2x_plexos.exporter.export_time_series_csv", side_effect=_capture)
+
+    result = exporter.export_time_series()
+    assert result.is_ok()

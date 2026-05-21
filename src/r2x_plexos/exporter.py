@@ -566,7 +566,9 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             else:
                                 _props.update(["Rating", "Load Subtracter"])
                         elif key == "hydro_budget":
-                            _props.add(get_hydro_budget_property_name(ts_key.resolution))
+                            resolved_ts = self._resolve_matching_time_series(_comp, ts_key)
+                            if resolved_ts is not None:
+                                _props.add(get_hydro_budget_property_name(resolved_ts.resolution))
                         elif key in GENERATOR_TO_STORAGE_TS_PROPERTY_MAP:
                             pass
                         else:
@@ -597,9 +599,11 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     ):
                         skey = ts_key.name.strip().lower().replace(" ", "_")
                         if skey == "hydro_budget":
-                            comp_ts_props.setdefault(_gen.name, set()).add(
-                                get_hydro_budget_property_name(ts_key.resolution)
-                            )
+                            resolved_ts = self._resolve_matching_time_series(linked_storage, ts_key)
+                            if resolved_ts is not None:
+                                comp_ts_props.setdefault(_gen.name, set()).add(
+                                    get_hydro_budget_property_name(resolved_ts.resolution)
+                                )
 
             records: list[dict[str, Any]] = []
 
@@ -1017,6 +1021,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                         continue
 
                     key = ts_key.name.strip().lower().replace(" ", "_")
+                    resolved_ts = self._resolve_matching_time_series(component, ts_key)
 
                     target_component = component
                     target_class_enum = class_enum
@@ -1048,7 +1053,10 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                 target_component = generator
                                 target_class_enum = gen_class
                                 if key == "hydro_budget":
-                                    property_names = [get_hydro_budget_property_name(ts_key.resolution)]
+                                    if resolved_ts is not None:
+                                        property_names = [
+                                            get_hydro_budget_property_name(resolved_ts.resolution)
+                                        ]
                                 else:
                                     property_names = [STORAGE_TO_GENERATOR_TS_PROPERTY_MAP[key]]
                         else:
@@ -1068,7 +1076,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             else:
                                 property_names = ["Rating", "Load Subtracter"]
                         elif isinstance(component, PLEXOSGenerator) and key == "hydro_budget":
-                            property_names = [get_hydro_budget_property_name(ts_key.resolution)]
+                            if resolved_ts is not None:
+                                property_names = [get_hydro_budget_property_name(resolved_ts.resolution)]
                         else:
                             property_name = self._get_time_series_property_name(
                                 component, ts_key_name=ts_key.name
@@ -1191,6 +1200,88 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
 
         return mapping
 
+    def _resolve_matching_time_series(self, component: Any, ts_key: Any) -> Any | None:
+        """Resolve the best matching TS variant for a key using timestamp/resolution."""
+        key = str(getattr(ts_key, "name", "")).strip().lower().replace(" ", "_")
+        try:
+            ts_list = self.system.list_time_series(component, name=ts_key.name, **ts_key.features)
+        except Exception as e:
+            logger.error("Failed to get time series for {}.{}: {}", component.name, ts_key.name, e)
+            return None
+
+        if not isinstance(ts_list, list):
+            try:
+                ts_list = list(ts_list)
+            except TypeError:
+                ts_list = [ts_list]
+
+        if not ts_list:
+            logger.warning("No time series found for {}.{}; skipping", component.name, ts_key.name)
+            return None
+
+        initial_ts_raw = getattr(ts_key, "initial_timestamp", None)
+        initial_ts = initial_ts_raw if isinstance(initial_ts_raw, datetime) else None
+        ts_resolution_raw = getattr(ts_key, "resolution", None)
+        ts_resolution = ts_resolution_raw if isinstance(ts_resolution_raw, timedelta) else None
+
+        if len(ts_list) > 1:
+            if key == "hydro_budget":
+                return max(
+                    ts_list,
+                    key=lambda t: getattr(getattr(t, "resolution", None), "total_seconds", lambda: 0)(),
+                )
+
+            matched = next(
+                (
+                    t
+                    for t in ts_list
+                    if getattr(t, "initial_timestamp", None) == initial_ts
+                    and getattr(t, "resolution", None) == ts_resolution
+                ),
+                None,
+            )
+            if matched is None and ts_resolution is not None:
+                matched = next(
+                    (t for t in ts_list if getattr(t, "resolution", None) == ts_resolution),
+                    None,
+                )
+            if matched is None and ts_resolution is None and initial_ts is not None:
+                matched = next(
+                    (t for t in ts_list if getattr(t, "initial_timestamp", None) == initial_ts),
+                    None,
+                )
+            if matched is None:
+                logger.warning(
+                    "No matching TS variant for {}.{} (initial_ts={}, resolution={}); skipping",
+                    component.name,
+                    ts_key.name,
+                    initial_ts,
+                    ts_resolution,
+                )
+                return None
+            return matched
+
+        ts = ts_list[0]
+        if ts_resolution is not None and getattr(ts, "resolution", None) != ts_resolution:
+            logger.warning(
+                "TS resolution mismatch for {}.{} (expected {}, got {}); skipping",
+                component.name,
+                ts_key.name,
+                ts_resolution,
+                getattr(ts, "resolution", None),
+            )
+            return None
+        if initial_ts is not None and getattr(ts, "initial_timestamp", None) != initial_ts:
+            logger.warning(
+                "TS initial_timestamp mismatch for {}.{} (expected {}, got {}); skipping",
+                component.name,
+                ts_key.name,
+                initial_ts,
+                getattr(ts, "initial_timestamp", None),
+            )
+            return None
+        return ts
+
     def export_time_series(self) -> Result[None, str]:
         """Export all time series data from the system to CSV files and update property references."""
         all_components_with_ts = []
@@ -1256,71 +1347,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
 
             time_series_data: list[tuple[str, Any]] = []
             for component, ts_key in group_list:
-                try:
-                    ts_list = self.system.list_time_series(component, name=ts_key.name, **ts_key.features)
-                    if not ts_list:
-                        logger.warning(
-                            "No time series found for {}.{}; skipping", component.name, ts_key.name
-                        )
-                        continue
-                    initial_ts_raw = getattr(ts_key, "initial_timestamp", None)
-                    initial_ts = initial_ts_raw if isinstance(initial_ts_raw, datetime) else None
-                    ts_resolution_raw = getattr(ts_key, "resolution", None)
-                    ts_resolution = (
-                        ts_resolution_raw if isinstance(ts_resolution_raw, timedelta) else None
-                    )
-                    if len(ts_list) > 1:
-                        matched = next(
-                            (
-                                t
-                                for t in ts_list
-                                if getattr(t, "initial_timestamp", None) == initial_ts
-                                and getattr(t, "resolution", None) == ts_resolution
-                            ),
-                            None,
-                        )
-                        if matched is None and ts_resolution is not None:
-                            matched = next(
-                                (t for t in ts_list if getattr(t, "resolution", None) == ts_resolution),
-                                None,
-                            )
-                        if matched is None and ts_resolution is None and initial_ts is not None:
-                            matched = next(
-                                (t for t in ts_list if getattr(t, "initial_timestamp", None) == initial_ts),
-                                None,
-                            )
-                        if matched is None:
-                            logger.warning(
-                                "No matching TS variant for {}.{} (initial_ts={}, resolution={}); skipping",
-                                component.name,
-                                ts_key.name,
-                                initial_ts,
-                                ts_resolution,
-                            )
-                            continue
-                        ts = matched
-                    else:
-                        ts = ts_list[0]
-                        if ts_resolution is not None and getattr(ts, "resolution", None) != ts_resolution:
-                            logger.warning(
-                                "TS resolution mismatch for {}.{} (expected {}, got {}); skipping",
-                                component.name,
-                                ts_key.name,
-                                ts_resolution,
-                                getattr(ts, "resolution", None),
-                            )
-                            continue
-                        if initial_ts is not None and getattr(ts, "initial_timestamp", None) != initial_ts:
-                            logger.warning(
-                                "TS initial_timestamp mismatch for {}.{} (expected {}, got {}); skipping",
-                                component.name,
-                                ts_key.name,
-                                initial_ts,
-                                getattr(ts, "initial_timestamp", None),
-                            )
-                            continue
-                except Exception as e:
-                    logger.error("Failed to get time series for {}.{}: {}", component.name, ts_key.name, e)
+                ts = self._resolve_matching_time_series(component, ts_key)
+                if ts is None:
                     continue
                 time_series_data.append((component.name, ts))
 

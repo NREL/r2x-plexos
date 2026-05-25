@@ -332,13 +332,13 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             logger.debug(f"Adding {len(components)} {component_type.__name__} components")
 
             # Sort components by category to group them
-            components.sort(key=lambda x: x.category or "")  # type: ignore
+            components.sort(key=lambda x: x.category or "")
 
             # Fetch all existing objects of this class once to avoid duplicate inserts
             existing = set(self.db.list_objects_by_class(class_enum))
 
             # Group components by category and add each group in one call
-            for category, group in groupby(components, key=lambda x: x.category or ""):  # type: ignore
+            for category, group in groupby(components, key=lambda x: x.category or ""):
                 names = [comp.name for comp in group]
 
                 # Filter out names that already exist in the database
@@ -1287,7 +1287,12 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         # resolution (it would be the hourly energy profile, not the weekly budget).
         # A coarser-than-key variant is accepted — the key may be mis-tagged as hourly
         # while the system only holds the weekly budget series.
-        if key == "hydro_budget" and ts_resolution is not None and ts_actual_resolution is not None and ts_actual_resolution < ts_resolution:
+        if (
+            key == "hydro_budget"
+            and ts_resolution is not None
+            and ts_actual_resolution is not None
+            and ts_actual_resolution < ts_resolution
+        ):
             logger.warning(
                 "hydro_budget TS for {}.{} is finer ({}) than key resolution ({}); skipping",
                 component.name,
@@ -1466,6 +1471,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
 
     def _add_reports(self) -> None:
         """Add report definitions from plexos_reports.json to the PlexosDB."""
+        if self.db is None:
+            return
         report_objects = PLEXOSConfig.load_reports()
         for report_object in report_objects:
             report_object["collection"] = get_enum_from_string(report_object["collection"], CollectionEnum)

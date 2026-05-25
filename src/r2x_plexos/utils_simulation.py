@@ -71,7 +71,7 @@ class SimulationConfig:
 
     models: list[PLEXOSModel]
     horizons: list[PLEXOSHorizon]
-    memberships: list[tuple[str, str]]  # (model_name, horizon_name) pairs
+    memberships: list[tuple[str, str, str]]  # (model_name, child_name, membership_type) triples
     simulation_configs: dict[str, PLEXOSConfiguration] | None = None
 
 
@@ -530,7 +530,9 @@ def _build_from_static_models(
             models=models,
             horizons=horizons,
             memberships=memberships,
-            simulation_configs=simulation_config,
+            simulation_configs={k: v for k, v in simulation_config.items() if v is not None}
+            if simulation_config is not None
+            else None,
         )
     )
 
@@ -647,7 +649,9 @@ def build_plexos_simulation(
                 models=build_result.models,
                 horizons=build_result.horizons,
                 memberships=build_result.memberships,
-                simulation_configs=simulation_config,  # type: ignore[arg-type]
+                simulation_configs={k: v for k, v in simulation_config.items() if v is not None}
+                if simulation_config is not None
+                else None,
             )
         )
 
@@ -756,7 +760,7 @@ def _build_monthly_models(
         days_in_month = (end_date - start_date).days + 1
 
         horizon_name = f"Horizon_{horizon_year}_M{month:02d}"
-        horizon_data = {
+        horizon_data: dict[str, Any] = {
             "name": horizon_name,
             "chrono_date_from": datetime_to_ole_date(start_date),
             "date_from": datetime_to_ole_date(datetime(horizon_year, 1, 1)),
@@ -770,7 +774,7 @@ def _build_monthly_models(
         horizons.append(horizon)
 
         model_name = f"Model_{horizon_year}_M{month:02d}"
-        model_data = {
+        model_data: dict[str, Any] = {
             "name": model_name,
             "category": f"model_{horizon_year}",
         }
@@ -843,7 +847,7 @@ def _build_weekly_models(
         days_in_week = (end_date - start_date).days + 1
 
         horizon_name = f"Horizon_{horizon_year}_W{week:02d}"
-        horizon_data = {
+        horizon_data: dict[str, Any] = {
             "name": horizon_name,
             "chrono_date_from": datetime_to_ole_date(start_date),
             "date_from": datetime_to_ole_date(start_of_year),
@@ -857,7 +861,7 @@ def _build_weekly_models(
         horizons.append(horizon)
 
         model_name = f"Model_{horizon_year}_W{week:02d}"
-        model_data = {
+        model_data: dict[str, Any] = {
             "name": model_name,
             "category": f"model_{horizon_year}",
         }
@@ -933,7 +937,7 @@ def _build_quarterly_models(
         days_in_quarter = (end_date - start_date).days + 1
 
         horizon_name = f"Horizon_{horizon_year}_{quarter_name}"
-        horizon_data = {
+        horizon_data: dict[str, Any] = {
             "name": horizon_name,
             "chrono_date_from": datetime_to_ole_date(start_date),
             "date_from": datetime_to_ole_date(datetime(horizon_year, 1, 1)),
@@ -947,7 +951,7 @@ def _build_quarterly_models(
         horizons.append(horizon)
 
         model_name = f"Model_{horizon_year}_{quarter_name}"
-        model_data = {
+        model_data: dict[str, Any] = {
             "name": model_name,
             "category": f"model_{horizon_year}",
         }

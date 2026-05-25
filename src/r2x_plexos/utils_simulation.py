@@ -72,7 +72,7 @@ class SimulationConfig:
     models: list[PLEXOSModel]
     horizons: list[PLEXOSHorizon]
     memberships: list[tuple[str, str, str]]  # (model_name, child_name, membership_type) triples
-    simulation_configs: dict[str, PLEXOSConfiguration] | None = None
+    simulation_configs: dict[str, PLEXOSConfiguration | None] | None = None
 
 
 def get_enum_from_string(string: str, enum_class, prefix: str | None = None):
@@ -530,9 +530,7 @@ def _build_from_static_models(
             models=models,
             horizons=horizons,
             memberships=memberships,
-            simulation_configs={k: v for k, v in simulation_config.items() if v is not None}
-            if simulation_config is not None
-            else None,
+            simulation_configs=dict(simulation_config) if simulation_config is not None else None,
         )
     )
 
@@ -649,9 +647,7 @@ def build_plexos_simulation(
                 models=build_result.models,
                 horizons=build_result.horizons,
                 memberships=build_result.memberships,
-                simulation_configs={k: v for k, v in simulation_config.items() if v is not None}
-                if simulation_config is not None
-                else None,
+                simulation_configs=dict(simulation_config),
             )
         )
 

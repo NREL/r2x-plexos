@@ -55,6 +55,11 @@ XML_TEMPLATE_MAP = {
 }
 BATCH_SIZE = 500
 FLOW_CLIP_MEMO_TEXT = "Setting fixed value of ±99999 to flows greater/less than ±100000"
+# PLEXOS property aliases that are only meaningful for thermal/commit generators.
+# These are stripped from hydro-group generators even when they carry non-default values.
+_THERMAL_ONLY_ALIASES: frozenset[str] = frozenset(
+    {"Fuel Price", "Start Cost", "Min Up Time", "Min Down Time"}
+)
 
 
 class PLEXOSExporter(Plugin[PLEXOSConfig]):
@@ -455,36 +460,39 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             logger.debug("Dropped {} duplicate property rows before bulk insert", dropped)
         return deduped
 
+    def _get_category_group_name(self, comp: Any) -> str | None:
+        """Return the category-group name for a component, or None if unresolvable."""
+        category_groups = self.defaults.get("category-groups", {})
+        category = getattr(comp, "category", None)
+        if not category:
+            return None
+        cat = str(category).strip().lower().replace("_", "-")
+        alias_map = {
+            "thermal": "thermal-standard",
+            "renewable": "renewable-dispatch",
+            "storage": "energy-reservoir-storage",
+            "hydro": "hydro-dispatch",
+        }
+        cat = alias_map.get(cat, cat)
+        if cat in category_groups:
+            return cat
+        return {
+            str(c).strip().lower().replace("_", "-"): grp
+            for grp, cats in category_groups.items()
+            for c in cats
+        }.get(cat)
+
     def _get_required_properties_for_component(self, comp: Any, type_name: str) -> set[str]:
         """Resolve required properties for a component using category-group aware lookup."""
         required_properties = self.defaults.get("required-properties", {})
-        category_groups = self.defaults.get("category-groups", {})
-        category = getattr(comp, "category", None)
-
-        if category:
-            category_norm = str(category).strip().lower().replace("_", "-")
-            alias_map = {
-                "thermal": "thermal-standard",
-                "renewable": "renewable-dispatch",
-                "storage": "energy-reservoir-storage",
-            }
-            category_norm = alias_map.get(category_norm, category_norm)
-
-            category_to_group = {
-                str(cat).strip().lower().replace("_", "-"): group_name
-                for group_name, categories in category_groups.items()
-                for cat in categories
-            }
-            group_name = category_to_group.get(category_norm)
-
-            if group_name:
-                group_key = f"{type_name}.{group_name}"
-                if group_key in required_properties:
-                    value = required_properties[group_key]
-                    if isinstance(value, str):
-                        value = required_properties.get(value, [])
-                    return set(value)
-
+        group_name = self._get_category_group_name(comp)
+        if group_name:
+            group_key = f"{type_name}.{group_name}"
+            if group_key in required_properties:
+                value = required_properties[group_key]
+                if isinstance(value, str):
+                    value = required_properties.get(value, [])
+                return set(value)
         if type_name == "PLEXOSGenerator":
             return set(required_properties.get("PLEXOSGenerator.thermal-standard", []))
         if type_name == "PLEXOSStorage":
@@ -562,8 +570,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     ):
                         key = ts_key.name.strip().lower().replace(" ", "_")
                         if key == "max_active_power":
-                            if sienna_type == "HydroDispatch":
-                                _props.add("Load")
+                            if sienna_type.startswith("Hydro"):
+                                _props.add("Max Energy Hour")
                             else:
                                 _props.update(["Rating", "Load Subtracter"])
                         elif key == "hydro_budget":
@@ -628,6 +636,14 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             value = getattr(comp, prop_name, None)
                             if value is not None:
                                 aliased_dict[alias_name] = value
+
+                # Thermal-only properties must never appear on hydro generators,
+                # even when the component carries a non-default (non-zero) value.
+                if isinstance(comp, PLEXOSGenerator):
+                    group = self._get_category_group_name(comp)
+                    if group and group.startswith("hydro"):
+                        for alias in _THERMAL_ONLY_ALIASES:
+                            aliased_dict.pop(alias, None)
 
                 if isinstance(comp, PLEXOSGenerator):
                     has_heat_rate_base = (
@@ -1071,9 +1087,9 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     else:
                         if isinstance(component, PLEXOSGenerator) and key == "max_active_power":
                             sienna_type = (getattr(component, "ext", None) or {}).get("sienna_type", "")
-                            if sienna_type == "HydroDispatch":
-                                # Must-dispatch available flow; attach to "Load" not "Rating"
-                                property_names = ["Load"]
+                            if sienna_type.startswith("Hydro"):
+                                # Hourly available flow; attach to "Max Energy Hour"
+                                property_names = ["Max Energy Hour"]
                             else:
                                 property_names = ["Rating", "Load Subtracter"]
                         elif isinstance(component, PLEXOSGenerator) and key == "hydro_budget":

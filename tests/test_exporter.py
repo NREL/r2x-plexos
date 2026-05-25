@@ -1845,8 +1845,12 @@ def test_export_time_series_skips_unmatched_variant(mocker, tmp_path):
     assert result.is_ok()
 
 
-def test_export_time_series_hydro_budget_prefers_coarsest_when_key_mismatched(mocker, tmp_path):
-    """Hydro budget should prefer coarser (weekly) series over hourly when key metadata is inconsistent."""
+def test_export_time_series_hydro_budget_always_resolves_to_coarsest(mocker, tmp_path):
+    """Hydro budget always resolves to the coarsest TS, regardless of key resolution.
+
+    The hourly energy profile is carried by max_active_power (Max Energy Hour),
+    not by hydro_budget. So hydro_budget should always pick the coarsest variant.
+    """
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys_mock = mocker.Mock()
 
@@ -1887,6 +1891,61 @@ def test_export_time_series_hydro_budget_prefers_coarsest_when_key_mismatched(mo
 
     def _capture(filepath, ts_data):
         assert len(ts_data) == 1
+        # key resolution is hourly but hydro_budget always returns coarsest (weekly, 53 pts)
+        assert len(ts_data[0][1].data) == 53
+        return Ok(None)
+
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=data_dir)
+    mocker.patch("r2x_plexos.exporter.export_time_series_csv", side_effect=_capture)
+
+    result = exporter.export_time_series()
+    assert result.is_ok()
+
+
+def test_export_time_series_hydro_budget_falls_back_to_coarsest_when_no_resolution_match(mocker, tmp_path):
+    """Hydro budget falls back to the coarsest TS when no variant matches the key resolution."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_mock = mocker.Mock()
+
+    class DummyType:
+        pass
+
+    comp = mocker.Mock()
+    comp.name = "HydroA"
+    type(comp).__name__ = "PLEXOSGenerator"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "hydro_budget"
+    ts_key.features = {}
+    ts_key.initial_timestamp = datetime(2024, 1, 1)
+    # Key says 6-hourly but no 6-hourly TS exists — only weekly and daily.
+    ts_key.resolution = timedelta(hours=6)
+
+    weekly = mocker.Mock()
+    weekly.data = [2.0] * 53
+    weekly.initial_timestamp = ts_key.initial_timestamp
+    weekly.resolution = timedelta(days=7)
+
+    daily = mocker.Mock()
+    daily.data = [3.0] * 365
+    daily.initial_timestamp = ts_key.initial_timestamp
+    daily.resolution = timedelta(days=1)
+
+    sys_mock.get_component_types.return_value = [DummyType]
+    sys_mock.get_components.return_value = [comp]
+    sys_mock.has_time_series.return_value = True
+    sys_mock.list_time_series_keys.return_value = [ts_key]
+    sys_mock.list_time_series.return_value = [daily, weekly]
+
+    ctx = PluginContext(config=config, system=sys_mock)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+
+    def _capture(filepath, ts_data):
+        assert len(ts_data) == 1
+        # No 6-hourly variant → coarsest (weekly, 53 points) is the fallback.
         assert len(ts_data[0][1].data) == 53
         return Ok(None)
 
@@ -1939,7 +1998,9 @@ def test_build_generator_to_storage_map_skips_invalid_and_maps_reverse_direction
         parent_object=storage, child_object=gen, collection=CollectionEnum.Generators
     )
 
-    with patch.object(sys_obj, "get_supplemental_attributes", return_value=[invalid_membership, reverse_membership]):
+    with patch.object(
+        sys_obj, "get_supplemental_attributes", return_value=[invalid_membership, reverse_membership]
+    ):
         mapping = exporter._build_generator_to_storage_map()
 
     assert mapping["HydroGen"].name == "HydroRes"
@@ -2111,3 +2172,100 @@ def test_resolve_template_path_uses_packaged_filename_when_present(tmp_path):
         resolved = exporter._resolve_template_path()
 
     assert resolved == packaged_template
+
+
+def test_link_datafiles_max_active_power_hydro_er_sienna_type_maps_to_max_energy_hour(mocker, tmp_path):
+    """max_active_power on a generator with sienna_type=HydroEnergyReservoir links to Max Energy Hour."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_obj = mocker.Mock()
+
+    generator = PLEXOSGenerator(
+        name="HydroER",
+        category="some-other-cat",  # does NOT match _hydro_er_cats codes
+        units=1,
+        rating=100.0,
+        ext={"sienna_type": "HydroEnergyReservoir"},
+    )
+    datafile = PLEXOSDatafile(
+        name="PLEXOSGenerator_max_active_power_Base_2024",
+        filename=PLEXOSPropertyValue.from_dict(
+            {"datafile_name": "Data/PLEXOSGenerator_max_active_power_Base_2024.csv"}
+        ),
+    )
+    datafile.object_id = 42
+
+    ts_key = mocker.Mock()
+    ts_key.name = "max_active_power"
+    ts_key.features = {}
+
+    class DummyType:
+        pass
+
+    sys_obj.get_component_types.return_value = [DummyType]
+    sys_obj.get_components.return_value = [generator]
+    sys_obj.has_time_series.return_value = True
+    sys_obj.list_time_series_keys.return_value = [ts_key]
+
+    def _get_component(component_type, name):
+        if component_type is PLEXOSDatafile and name == "PLEXOSGenerator_max_active_power_Base_2024":
+            return datafile
+        return None
+
+    sys_obj.get_component.side_effect = _get_component
+    sys_obj.get_supplemental_attributes.return_value = []
+
+    ctx = PluginContext(config=config, system=sys_obj)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    db = mocker.Mock()
+    db._db = mocker.Mock()
+    exporter.db = db
+
+    output_dir = tmp_path / "Data"
+    output_dir.mkdir()
+    (output_dir / "PLEXOSGenerator_max_active_power_Base_2024.csv").write_text("DateTime,HydroER\n")
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=output_dir)
+    mocker.patch(
+        "r2x_plexos.exporter.os.listdir", return_value=["PLEXOSGenerator_max_active_power_Base_2024.csv"]
+    )
+    mocker.patch.object(exporter, "_resolve_matching_time_series", return_value=None)
+
+    exporter._link_datafiles_to_components()
+
+    property_names = {call.kwargs.get("name") for call in db.add_property.call_args_list}
+    assert "Max Energy Hour" in property_names
+    assert "Rating" not in property_names
+    assert "Load Subtracter" not in property_names
+
+
+def test_get_required_properties_for_generator_hydro_dispatch_excludes_thermal_fields(template_db):
+    """Hydro generators should not inherit thermal-only required properties."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    gen = PLEXOSGenerator(name="HydroGen", category="hydro-dispatch", units=1, rating=100.0)
+    result = exporter._get_required_properties_for_component(gen, "PLEXOSGenerator")
+    assert isinstance(result, set)
+    assert "start_cost" not in result
+    assert "fuel_price" not in result
+    assert "min_up_time" not in result
+    assert "min_down_time" not in result
+    assert "max_energy_day" not in result
+
+
+def test_get_required_properties_for_generator_unknown_category_does_not_default_to_thermal(template_db):
+    """Unknown generator categories should not force thermal required defaults."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    gen = PLEXOSGenerator(name="UnknownGen", category="hydro", units=1, rating=50.0)
+    result = exporter._get_required_properties_for_component(gen, "PLEXOSGenerator")
+    assert isinstance(result, set)
+    assert "start_cost" not in result
+    assert "fuel_price" not in result
+    assert "min_up_time" not in result
+    assert "min_down_time" not in result

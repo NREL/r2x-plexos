@@ -9,6 +9,7 @@ from typing import Any
 from loguru import logger
 from plexosdb import ClassEnum, PlexosDB
 from plexosdb.enums import get_default_collection
+from plexosdb.exceptions import NotFoundError
 
 from r2x_core import Err, Ok, Result
 from r2x_plexos.models import PLEXOSHorizon, PLEXOSModel
@@ -1136,6 +1137,9 @@ def _ensure_base_diagnostic_defaults(db: PlexosDB) -> None:
 
     For each requested option, the first schema-supported name candidate is used
     and forced to checked (-1).
+
+    Insert policy: upsert — existing values are overwritten by the defaults
+    defined in BASE_DIAGNOSE_DEFAULT_ATTRIBUTE_CANDIDATES.
     """
     if not db.check_object_exists(ClassEnum.Diagnostic, BASE_DIAGNOSE_NAME):
         return
@@ -1173,6 +1177,12 @@ def _ensure_transmission_defaults(db: PlexosDB, transmission_object_names: set[s
 
     For each desired option, we try known attribute name candidates and set the
     first schema-supported one when missing.
+
+    Insert policy: skip-if-exists — attributes that already carry a value are
+    left untouched so that user-configured Transmission settings are preserved.
+    Contrast with _ensure_performance_defaults / _ensure_production_defaults /
+    _ensure_st_schedule_defaults / _ensure_base_diagnostic_defaults, which all
+    upsert (overwrite) their target attributes unconditionally.
     """
     if not transmission_object_names:
         return
@@ -1198,7 +1208,7 @@ def _ensure_transmission_defaults(db: PlexosDB, transmission_object_names: set[s
                     object_name=object_name,
                     attribute_name=selected_attr,
                 )
-            except Exception:
+            except (NotFoundError, AssertionError):
                 current = None
 
             if current is not None:
@@ -1260,7 +1270,11 @@ def _set_or_add_attribute_value(
 
 
 def _ensure_performance_defaults(db: PlexosDB, performance_object_names: set[str]) -> None:
-    """Force default Performance options for selected objects."""
+    """Force default Performance options for selected objects.
+
+    Insert policy: upsert — existing values are overwritten by the defaults
+    defined in PERFORMANCE_DEFAULT_ATTRIBUTES.
+    """
     if not performance_object_names:
         return
 
@@ -1291,7 +1305,11 @@ def _ensure_performance_defaults(db: PlexosDB, performance_object_names: set[str
 
 
 def _ensure_production_defaults(db: PlexosDB, production_object_names: set[str]) -> None:
-    """Force default Production options for selected objects."""
+    """Force default Production options for selected objects.
+
+    Insert policy: upsert — existing values are overwritten by the defaults
+    defined in PRODUCTION_DEFAULT_ATTRIBUTES.
+    """
     if not production_object_names:
         return
 
@@ -1322,7 +1340,11 @@ def _ensure_production_defaults(db: PlexosDB, production_object_names: set[str])
 
 
 def _ensure_st_schedule_defaults(db: PlexosDB, st_schedule_object_names: set[str]) -> None:
-    """Force default ST Schedule options for selected objects."""
+    """Force default ST Schedule options for selected objects.
+
+    Insert policy: upsert — existing values are overwritten by the defaults
+    defined in ST_SCHEDULE_DEFAULT_ATTRIBUTES.
+    """
     if not st_schedule_object_names:
         return
 

@@ -1,6 +1,7 @@
 """Export PLEXOS system to XML."""
 
 import os
+import sqlite3
 from datetime import datetime, timedelta
 from itertools import groupby
 from pathlib import Path
@@ -56,10 +57,8 @@ XML_TEMPLATE_MAP = {
 BATCH_SIZE = 500
 FLOW_CLIP_MEMO_TEXT = "Setting fixed value of ±99999 to flows greater/less than ±100000"
 # PLEXOS property aliases that are only meaningful for thermal/commit generators.
-# These are stripped from hydro-group generators even when they carry non-default values.
-_THERMAL_ONLY_ALIASES: frozenset[str] = frozenset(
-    {"Fuel Price", "Start Cost", "Min Up Time", "Min Down Time"}
-)
+# Source of truth lives on PLEXOSGenerator.THERMAL_ONLY_ALIASES — update it there.
+_THERMAL_ONLY_ALIASES: frozenset[str] = PLEXOSGenerator.THERMAL_ONLY_ALIASES
 
 
 class PLEXOSExporter(Plugin[PLEXOSConfig]):
@@ -82,6 +81,14 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         self.plexos_scenario: str = "default"
         self.db: PlexosDB | None = None
         self.defaults: dict[str, Any] = PLEXOSConfig.load_defaults()
+        # Reverse map built once from category-groups: normalised category → group name.
+        # Avoids rebuilding a temporary dict on every component property lookup.
+        _category_groups: dict[str, list[str]] = self.defaults.get("category-groups", {})
+        self._category_to_group: dict[str, str] = {
+            str(c).strip().lower().replace("_", "-"): grp
+            for grp, cats in _category_groups.items()
+            for c in cats
+        }
 
     def on_export(self) -> Result[None, str]:
         """Initialize the exporter after context is set.
@@ -451,7 +458,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             else:
                 current = seen[key]
                 for field in ("band", "timeslice", "date_from", "date_to", "datafile_text"):
-                    if current.get(field) is None and rec.get(field) is not None:
+                    if rec.get(field) is not None:
                         current[field] = rec[field]
 
         deduped = list(seen.values())
@@ -476,11 +483,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         cat = alias_map.get(cat, cat)
         if cat in category_groups:
             return cat
-        return {
-            str(c).strip().lower().replace("_", "-"): grp
-            for grp, cats in category_groups.items()
-            for c in cats
-        }.get(cat)
+        return self._category_to_group.get(cat)
 
     def _get_required_properties_for_component(self, comp: Any, type_name: str) -> set[str]:
         """Resolve required properties for a component using category-group aware lookup."""
@@ -781,7 +784,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     FROM line_flow_rows
                     GROUP BY object_id
                     HAVING MAX(CASE WHEN property_name = 'Max Flow' AND flow_value = 99999 THEN 1 ELSE 0 END) = 1
-                       AND MAX(CASE WHEN property_name = 'Min Flow' AND flow_value = -99999 THEN 1 ELSE 0 END) = 1
+                        OR MAX(CASE WHEN property_name = 'Min Flow' AND flow_value = -99999 THEN 1 ELSE 0 END) = 1
                 )
                 INSERT INTO t_memo_data (data_id, value)
                 SELECT lfr.data_id, ?
@@ -797,7 +800,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 """,
                 (FLOW_CLIP_MEMO_TEXT,),
             )
-        except Exception as exc:
+        except sqlite3.OperationalError as exc:
             logger.debug("Skipping line flow memo insertion; t_memo_data may be unavailable: {}", exc)
 
     def _bulk_resolve_object_ids(
@@ -1222,7 +1225,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         key = str(getattr(ts_key, "name", "")).strip().lower().replace(" ", "_")
         try:
             ts_list = self.system.list_time_series(component, name=ts_key.name, **ts_key.features)
-        except Exception as e:
+        except RuntimeError as e:
             logger.error("Failed to get time series for {}.{}: {}", component.name, ts_key.name, e)
             return None
 
@@ -1279,13 +1282,27 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             return matched
 
         ts = ts_list[0]
-        if ts_resolution is not None and getattr(ts, "resolution", None) != ts_resolution:
+        ts_actual_resolution = getattr(ts, "resolution", None)
+        # hydro_budget: skip only when the single variant is *finer* than the key's
+        # resolution (it would be the hourly energy profile, not the weekly budget).
+        # A coarser-than-key variant is accepted — the key may be mis-tagged as hourly
+        # while the system only holds the weekly budget series.
+        if key == "hydro_budget" and ts_resolution is not None and ts_actual_resolution is not None and ts_actual_resolution < ts_resolution:
+            logger.warning(
+                "hydro_budget TS for {}.{} is finer ({}) than key resolution ({}); skipping",
+                component.name,
+                ts_key.name,
+                ts_actual_resolution,
+                ts_resolution,
+            )
+            return None
+        if key != "hydro_budget" and ts_resolution is not None and ts_actual_resolution != ts_resolution:
             logger.warning(
                 "TS resolution mismatch for {}.{} (expected {}, got {}); skipping",
                 component.name,
                 ts_key.name,
                 ts_resolution,
-                getattr(ts, "resolution", None),
+                ts_actual_resolution,
             )
             return None
         if initial_ts is not None and getattr(ts, "initial_timestamp", None) != initial_ts:

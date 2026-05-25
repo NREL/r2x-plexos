@@ -1,6 +1,6 @@
 """The following file contains Pydantic models for a PLEXOS Generator model."""
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import Field
 
@@ -10,6 +10,14 @@ from .property_specification import PLEXOSProperty
 
 class PLEXOSGenerator(PLEXOSObject):
     """Class that holds attributes about PLEXOS generators."""
+
+    # PLEXOS property aliases that are meaningful only for thermal/commit generators.
+    # Listed here so that anyone adding a new thermal-only field can discover and
+    # update this set at the definition site. Consumed by the exporter to strip
+    # these aliases from hydro-group generators even when they carry non-default values.
+    THERMAL_ONLY_ALIASES: ClassVar[frozenset[str]] = frozenset(
+        {"Fuel Price", "Start Cost", "Min Up Time", "Min Down Time"}
+    )
 
     commit: Annotated[
         int,

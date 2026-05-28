@@ -19,6 +19,132 @@ class PLEXOSGenerator(PLEXOSObject):
         {"Fuel Price", "Start Cost", "Min Up Time", "Min Down Time"}
     )
 
+    acceptable_risk: Annotated[
+        float | int,
+        PLEXOSProperty(units="usd"),
+        Field(
+            alias="Acceptable Risk",
+            description="Acceptable risk around target net profit",
+        ),
+    ] = 0
+    aux_base: Annotated[
+        float | int,
+        PLEXOSProperty(units="MW"),
+        Field(
+            alias="Aux Base",
+            description="Auxiliary use per unit committed",
+            ge=0,
+        ),
+    ] = 0
+    aux_fixed: Annotated[
+        float | int,
+        PLEXOSProperty(units="MW"),
+        Field(
+            alias="Aux Fixed",
+            description="Fixed auxiliary usage per installed unit",
+            ge=0,
+        ),
+    ] = 0
+    aux_incr: Annotated[
+        float | int,
+        PLEXOSProperty(units="%"),
+        Field(
+            alias="Aux Incr",
+            description="Auxiliary use per unit of generation",
+            ge=0,
+            le=100,
+        ),
+    ] = 0
+    back_pressure_generator: Annotated[
+        int,
+        Field(
+            alias="Back Pressure Generator",
+            description="If the generator is a back pressure generator or not",
+            json_schema_extra={"enum": [0, -1]},
+        ),
+    ] = 0
+    balance_period: Annotated[
+        int,
+        Field(
+            alias="Balance Period",
+            description="Frequency of storage balance",
+            json_schema_extra={"enum": [0, 1, 2, 3, 4, 5, 6]},
+        ),
+    ] = 0
+    bid_cost_mark_up: Annotated[
+        float | int,
+        PLEXOSProperty(units="%"),
+        Field(
+            alias="Bid-Cost Mark-up",
+            description="Percentage mark-up applied to generator offer prices = (P - C) / C",
+        ),
+    ] = 0
+    boiler_efficiency: Annotated[
+        float | int,
+        PLEXOSProperty(units="%"),
+        Field(
+            alias="Boiler Efficiency",
+            description="Efficiency of the boiler component of a combined-cycle plant",
+        ),
+    ] = 100
+    boiler_heat_rate_incr: Annotated[
+        float | int,
+        PLEXOSProperty(units="GJ/GJ"),
+        Field(
+            alias="Boiler Heat Rate Incr",
+            description="Incremental heat rate for heat production from boiler",
+        ),
+    ] = 0
+    build_non_anticipativity: Annotated[
+        float | int,
+        PLEXOSProperty(units="usd/MW"),
+        Field(
+            alias="Build Non-anticipativity",
+            description="Price for violating non-anticipativity constraints in scenario-wise decomposition mode",
+        ),
+    ] = -1
+    build_set_size: Annotated[
+        float | int,
+        Field(
+            alias="Build Set Size",
+            description="Expansion must occur in sets of this many units where zero indicates any set size",
+            ge=0,
+        ),
+    ] = 0
+    capacity_price: Annotated[
+        float | int,
+        PLEXOSProperty(units="usd/kW/yr"),
+        Field(
+            alias="Capacity Price",
+            description="Price received by the generator for capacity",
+        ),
+    ] = 0
+    chp_electric_heat_rate_incr: Annotated[
+        float | int,
+        PLEXOSProperty(units="GJ/MWh"),
+        Field(
+            alias="CHP Electric Heat Rate Incr",
+            description="Incremental electric heat rate in heating mode",
+        ),
+    ] = 0
+    chp_heat_surrogate_rate_incr: Annotated[
+        float | int,
+        PLEXOSProperty(units="GJ/GJ"),
+        Field(
+            alias="CHP Heat Surrogate Rate Incr",
+            description="Notional value for heat fuel offtake estimation.",
+        ),
+    ] = 0
+    commission_date: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="Commission Date",
+            description="Date the generator was commissioned for use with [Technical Life]",
+            ge=0,
+        ),
+    ] = 1
+
     commit: Annotated[
         int,
         Field(
@@ -27,12 +153,119 @@ class PLEXOSGenerator(PLEXOSObject):
             json_schema_extra={"enum": [0, 1]},
         ),
     ] = 0
+    controllable_inflow: Annotated[
+        float | int,
+        PLEXOSProperty(units="%"),
+        Field(
+            alias="Controllable Inflow",
+            description="Proportion of Natural Inflow that is controllable",
+            ge=0,
+            le=100,
+        ),
+    ] = 0
+    debt_charge: Annotated[
+        float | int,
+        PLEXOSProperty(units="usd/kW/yr"),
+        Field(
+            alias="Debt Charge",
+            description="Annual debt charge",
+        ),
+    ] = 0
+    declining_depreciation_balance: Annotated[
+        float | int,
+        PLEXOSProperty(units="%"),
+        Field(
+            alias="Declining Depreciation Balance",
+            description="Balance applied to declining depreciation method",
+        ),
+    ] = 0
+    decomposition_bound_penalty: Annotated[
+        float | int,
+        PLEXOSProperty(units="usd/GJ"),
+        Field(
+            alias="Decomposition Bound Penalty",
+            description="Penalty applied to violation of storage bounds when the decomposition implies possible violations.",
+            ge=0,
+        ),
+    ] = 1000000
+    decomposition_method: Annotated[
+        int,
+        Field(
+            alias="Decomposition Method",
+            description="Method used to pass the optimal storage trajectory from one simulation phase to the next.",
+            json_schema_extra={"enum": [0, 1, 2]},
+        ),
+    ] = 1
+    decomposition_penalty_a: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="Decomposition Penalty a",
+            description="Decomposition storage target penalty function 'a' term.",
+        ),
+    ] = 0.0489
+    decomposition_penalty_b: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="Decomposition Penalty b",
+            description="Decomposition storage target penalty function 'b' term.",
+        ),
+    ] = 0.6931
+    decomposition_penalty_c: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="Decomposition Penalty c",
+            description="Decomposition storage target penalty function 'c' term.",
+        ),
+    ] = 0
+    decomposition_penalty_x: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="Decomposition Penalty x",
+            description="Decomposition storage target penalty function 'x' term.",
+        ),
+    ] = 1.1
+    dispatchable: Annotated[
+        int,
+        Field(
+            alias="Dispatchable",
+            description="A dispatchable generator operates anywhere within its technical limits whereas a non-dispatchable generator operates at its maximum available rating at all times",
+            json_schema_extra={"enum": [0, -1]},
+        ),
+    ] = -1
+    economic_maximum: Annotated[
+        float | int,
+        PLEXOSProperty(units="MW"),
+        Field(
+            alias="Economic Maximum",
+            description="Unit maximum generation economically available",
+        ),
+    ] = 1e30
+    economic_minimum: Annotated[
+        float | int,
+        PLEXOSProperty(units="MW"),
+        Field(
+            alias="Economic Minimum",
+            description="Unit minimum generation economically available",
+        ),
+    ] = 0
     expansion_economy_units: Annotated[
         float | int,
         Field(
             alias="Expansion Economy Units",
             description="Minimum number of units required for the expansion economy (band)",
             ge=0,
+        ),
+    ] = 0
+    expansion_economy_cost: Annotated[
+        float | int,
+        PLEXOSProperty(units="usd/kW"),
+        Field(
+            alias="Expansion Economy Cost",
+            description="Cost of building a unit at economy of scale (band)",
         ),
     ] = 0
     expansion_optimality: Annotated[
@@ -44,6 +277,74 @@ class PLEXOSGenerator(PLEXOSObject):
             json_schema_extra={"enum": [0, 2]},
         ),
     ] = 2
+    effective_forced_outage_rate: Annotated[
+        float | int,
+        PLEXOSProperty(units="%"),
+        Field(
+            alias="Effective Forced Outage Rate",
+            description="Effective forced outage rate for use in calculation of reliability indices",
+            ge=0,
+            le=100,
+        ),
+    ] = 0
+    efficiency_base: Annotated[
+        float | int,
+        PLEXOSProperty(units="MW"),
+        Field(
+            alias="Efficiency Base",
+            description="Flow rate at notional zero load for hydro unit",
+        ),
+    ] = 0
+    efficiency_incr: Annotated[
+        float | int,
+        PLEXOSProperty(units="MW/MW"),
+        Field(
+            alias="Efficiency Incr",
+            description="Efficiency of hydro generation",
+        ),
+    ] = 1
+    end_effects_method: Annotated[
+        int,
+        Field(
+            alias="End Effects Method",
+            description="Method used to value or constrain end-of-period heat volumes.",
+            json_schema_extra={"enum": [1, 2]},
+        ),
+    ] = 2
+    energy_scalar: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="Energy Scalar",
+            description="Scalar applied to generator energy limits and energy implied by capacity factor constraints",
+            ge=0,
+        ),
+    ] = 1
+    enforce_bounds: Annotated[
+        int,
+        Field(
+            alias="Enforce Bounds",
+            description="If the storage bounds are enforced.",
+            json_schema_extra={"enum": [0, -1]},
+        ),
+    ] = -1
+    equity_charge: Annotated[
+        float | int,
+        PLEXOSProperty(units="usd/kW/yr"),
+        Field(
+            alias="Equity Charge",
+            description="Annual required return on equity",
+        ),
+    ] = 0
+    establishment_cost: Annotated[
+        float | int,
+        PLEXOSProperty(units="kUSD"),
+        Field(
+            alias="Establishment Cost",
+            description="Establishment cost associated with the project",
+            ge=0,
+        ),
+    ] = 0
     firm_capacity: Annotated[
         float | int,
         PLEXOSProperty(units="MW"),
@@ -2517,6 +2818,54 @@ class PLEXOSGenerator(PLEXOSObject):
             ge=0,
         ),
     ] = 10
+    water_consumption: Annotated[
+        float | int,
+        PLEXOSProperty(units="m3/MWh"),
+        Field(
+            alias="Water Consumption",
+            description="Water consumed by the generator (e.g. evaporative cooling losses)",
+        ),
+    ] = 0
+    water_offtake: Annotated[
+        float | int,
+        PLEXOSProperty(units="m3/MWh"),
+        Field(
+            alias="Water Offtake",
+            description="Water recycled through the generator (e.g. for cooling)",
+        ),
+    ] = 0
+    wind_power_coefficient: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="Wind Power Coefficient",
+            description="Wind Power Coefficient",
+        ),
+    ] = 0.593
+    x: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="x",
+            description="Value to pass-through to solution",
+        ),
+    ] = 0
+    y: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="y",
+            description="Value to pass-through to solution",
+        ),
+    ] = 0
+    z: Annotated[
+        float | int,
+        PLEXOSProperty,
+        Field(
+            alias="z",
+            description="Value to pass-through to solution",
+        ),
+    ] = 0
 
     @classmethod
     def example(cls) -> "PLEXOSGenerator":

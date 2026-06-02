@@ -400,6 +400,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         logger.info("Adding component properties and memberships")
         self._add_component_properties(datafile_prefix=datafile_prefix)
         self._add_component_memberships()
+        self._resolve_db_consistency()
 
         xml_filename = self._build_xml_filename()
         xml_path = base_folder / xml_filename
@@ -1442,6 +1443,35 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 if not self.system.has_component(datafile_obj):
                     self.system.add_component(datafile_obj)
                     logger.debug(f"Created DataFile object: {datafile_obj.name}")
+
+    def _resolve_db_consistency(self) -> None:
+        """Fix database inconsistencies that cause PLEXOS validation warnings.
+
+        Updates max_band_id in t_property to match the actual maximum band used
+        in t_band for each property (avoids 'Band count exceeded' warnings).
+        """
+        if self.db is None:
+            return
+
+        # update max_band_id in t_property to match actual max band value
+        self.db._db.execute(
+            """
+            UPDATE t_property
+            SET max_band_id = (
+                SELECT MAX(b.band_id)
+                FROM t_band b
+                JOIN t_data d ON b.data_id = d.data_id
+                WHERE d.property_id = t_property.property_id
+            )
+            WHERE EXISTS (
+                SELECT 1
+                FROM t_band b
+                JOIN t_data d ON b.data_id = d.data_id
+                WHERE d.property_id = t_property.property_id
+                  AND b.band_id > COALESCE(t_property.max_band_id, 1)
+            )
+            """
+        )
 
     def _validate_xml(self, xml_path: str) -> bool:
         """

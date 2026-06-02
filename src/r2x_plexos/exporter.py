@@ -333,13 +333,13 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             logger.debug(f"Adding {len(components)} {component_type.__name__} components")
 
             # Sort components by category to group them
-            components.sort(key=lambda x: x.category or "")
+            components.sort(key=lambda x: cast(PLEXOSObject, x).category or "")
 
             # Fetch all existing objects of this class once to avoid duplicate inserts
             existing = set(self.db.list_objects_by_class(class_enum))
 
             # Group components by category and add each group in one call
-            for category, group in groupby(components, key=lambda x: x.category or ""):
+            for category, group in groupby(components, key=lambda x: cast(PLEXOSObject, x).category or ""):
                 names = [comp.name for comp in group]
 
                 # Filter out names that already exist in the database
@@ -448,7 +448,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     return stripped
             return value
 
-        seen: dict[tuple, dict[str, Any]] = {}
+        seen: dict[tuple[Any, ...], dict[str, Any]] = {}
         for rec in records:
             key = (
                 str(rec.get("name", "")).strip(),
@@ -1175,7 +1175,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             PLEXOSReserve: "Min Provision",
             PLEXOSRegion: "Load",
             PLEXOSStorage: "Natural Inflow",
-            PLEXOSPurchaser: "Max Load",
+            PLEXOSPurchaser: "Fixed Load",
         }
 
         fixed = fixed_property_by_type.get(type(component))
@@ -1344,7 +1344,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
 
         logger.debug(f"Found {len(ts_metadata)} time series keys total")
 
-        def _grouping_key(item: tuple[Any, Any]) -> tuple:
+        def _grouping_key(item: tuple[Any, Any]) -> tuple[Any, ...]:
             """Group by component class plus variable/time identity fields.
 
             Including component class avoids mixing identically named series

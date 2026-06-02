@@ -1,5 +1,6 @@
 """Tests for simulation configuration builder utilities."""
 
+import typing
 from datetime import datetime
 
 import pytest
@@ -1200,7 +1201,7 @@ def test_convert_simulation_config_to_attributes_returns_err_on_bad_object():
         alias = "BROKEN"
 
     class BrokenConfig:
-        model_fields = {"broken": FieldInfo()}
+        model_fields: typing.ClassVar[dict] = {"broken": FieldInfo()}
 
         def __getattr__(self, _name):
             raise RuntimeError("boom")

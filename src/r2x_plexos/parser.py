@@ -683,17 +683,19 @@ class PLEXOSParser(Plugin[PLEXOSConfig]):
 
         try:
             component_enum = ClassEnum(plexos_class)
+            component_class = PLEXOS_TYPE_MAP.get(component_enum)
         except ValueError:
+            # Compat: some class names (e.g. Purchaser) are not registered in
+            # ClassEnum but are inserted into PLEXOS_TYPE_MAP under their raw
+            # string key via enums_compat.
+            component_class = PLEXOS_TYPE_MAP.get(plexos_class)
+
+        if not component_class:
             logger.warning(
                 "Cannot parse object={} with type={}. Skipping it.",
                 name,
                 plexos_class,
             )
-            return None
-
-        component_class = PLEXOS_TYPE_MAP.get(component_enum)
-        if not component_class:
-            logger.debug(f"Unsupported component type: {obj_type}")
             return None
 
         logger.trace("Creating model for object={} with type={}", name, component_class)

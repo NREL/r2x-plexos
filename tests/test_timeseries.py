@@ -1,6 +1,7 @@
 """Tests for time series parsing functionality."""
 
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock
 from uuid import UUID
 
@@ -21,7 +22,7 @@ def parser_basic(data_folder) -> PLEXOSParser:
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     return parser
 
 
@@ -34,7 +35,7 @@ def parser_basic_mutable(data_folder) -> PLEXOSParser:
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     return parser
 
 
@@ -49,7 +50,7 @@ def parser_with_timeseries_dir(data_folder) -> PLEXOSParser:
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     return parser
 
 

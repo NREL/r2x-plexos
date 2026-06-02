@@ -24,7 +24,7 @@ from r2x_plexos.utils_exporter import (
 def sample_time_series():
     data = [1.0, 2.0, 3.0]
     initial_time = datetime(2024, 1, 1)
-    return SingleTimeSeries.from_array(data, "test_ts", initial_time, resolution=3600)
+    return SingleTimeSeries.from_array(data, "test_ts", initial_time, resolution=timedelta(seconds=3600))
 
 
 @pytest.fixture
@@ -45,7 +45,10 @@ def test_export_time_series_csv_requires_data(tmp_path: Path):
 
 def test_export_time_series_csv_mismatched_lengths(tmp_path: Path, sample_time_series: SingleTimeSeries):
     extra = SingleTimeSeries.from_array(
-        [1.0, 2.0, 3.0, 4.0], "other_ts", sample_time_series.initial_timestamp, resolution=3600
+        [1.0, 2.0, 3.0, 4.0],
+        "other_ts",
+        sample_time_series.initial_timestamp,
+        resolution=timedelta(seconds=3600),
     )
     filepath = tmp_path / "mismatch.csv"
     with pytest.raises(ValueError, match="Time series length mismatch"):
@@ -58,7 +61,7 @@ def test_export_time_series_csv_success(tmp_path: Path, sample_time_series: Sing
 
     # Create second time series with same length
     ts2 = SingleTimeSeries.from_array(
-        [4.0, 5.0, 6.0], "test_ts2", sample_time_series.initial_timestamp, resolution=3600
+        [4.0, 5.0, 6.0], "test_ts2", sample_time_series.initial_timestamp, resolution=timedelta(seconds=3600)
     )
 
     result = export_time_series_csv(filepath, [("comp1", sample_time_series), ("comp2", ts2)])
@@ -236,9 +239,9 @@ def test_export_time_series_csv_creates_parent_dirs(tmp_path: Path, sample_time_
 def test_export_time_series_csv_multiple_components(tmp_path: Path):
     """Test CSV export with multiple components."""
     initial_time = datetime(2024, 1, 1)
-    ts1 = SingleTimeSeries.from_array([1.0, 2.0], "ts1", initial_time, resolution=3600)
-    ts2 = SingleTimeSeries.from_array([3.0, 4.0], "ts2", initial_time, resolution=3600)
-    ts3 = SingleTimeSeries.from_array([5.0, 6.0], "ts3", initial_time, resolution=3600)
+    ts1 = SingleTimeSeries.from_array([1.0, 2.0], "ts1", initial_time, resolution=timedelta(seconds=3600))
+    ts2 = SingleTimeSeries.from_array([3.0, 4.0], "ts2", initial_time, resolution=timedelta(seconds=3600))
+    ts3 = SingleTimeSeries.from_array([5.0, 6.0], "ts3", initial_time, resolution=timedelta(seconds=3600))
 
     filepath = tmp_path / "multi.csv"
     result = export_time_series_csv(filepath, [("comp1", ts1), ("comp2", ts2), ("comp3", ts3)])

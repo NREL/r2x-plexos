@@ -25,7 +25,7 @@ def test_auto_resolve_property_no_priority():
             {"scenario": "High", "value": 120},
         ]
     )
-    gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)
+    gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)  # ty: ignore[invalid-argument-type]
     assert gen.max_capacity == {"Base": 100, "High": 120}
     assert gen.min_capacity == 50.0
 
@@ -37,7 +37,7 @@ def test_auto_resolve_property_with_priority():
             {"scenario": "High", "value": 120},
         ]
     )
-    gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)
+    gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)  # ty: ignore[invalid-argument-type]
     # PLEXOS convention: Higher priority number = higher priority
     with scenario_priority({"Base": 1, "High": 2}):
         assert gen.max_capacity == 120.0
@@ -46,7 +46,7 @@ def test_auto_resolve_property_with_priority():
 
 def test_auto_resolve_single_scenario():
     prop = PLEXOSPropertyValue.from_records([{"scenario": "Base", "value": 100}])
-    gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)
+    gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)  # ty: ignore[invalid-argument-type]
     assert gen.max_capacity == 100.0
 
 
@@ -57,7 +57,7 @@ def test_auto_resolve_preserves_property_access():
             {"scenario": "High", "value": 120},
         ]
     )
-    gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)
+    gen = Generator(name="test", max_capacity=prop, min_capacity=50.0)  # ty: ignore[invalid-argument-type]
     assert isinstance(gen.__dict__["max_capacity"], PLEXOSPropertyValue)
 
 
@@ -65,5 +65,5 @@ def test_regular_basemodel_unchanged():
     class RegularModel(BaseModel):
         value: Annotated[float | int, PLEXOSProperty(units="MW")]
 
-    model = RegularModel(value={"scenarios": {"Base": 100}})
+    model = RegularModel(value={"scenarios": {"Base": 100}})  # ty: ignore[invalid-argument-type]
     assert isinstance(model.value, PLEXOSPropertyValue)

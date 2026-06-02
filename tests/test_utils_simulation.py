@@ -1,5 +1,6 @@
 """Tests for simulation configuration builder utilities."""
 
+import typing
 from datetime import datetime
 
 import pytest
@@ -216,6 +217,7 @@ def test_missing_year_raises_error():
     """Test that missing year returns appropriate error."""
     result = build_plexos_simulation({"resolution": "1D"})
     assert result.is_err()
+    assert result.error is not None
     assert "must specify 'horizon_year'" in result.error.lower()
 
 
@@ -223,6 +225,7 @@ def test_unknown_template_raises_error():
     """Test that unknown template returns appropriate error."""
     result = build_plexos_simulation({"horizon_year": 2012, "template": "unknown"})
     assert result.is_err()
+    assert result.error is not None
     assert "Unknown template" in result.error
 
 
@@ -273,6 +276,7 @@ def test_build_custom_missing_start_date():
     result = build_plexos_simulation(config)
 
     assert result.is_err()
+    assert result.error is not None
     assert "missing required 'start' date" in result.error
 
 
@@ -291,6 +295,7 @@ def test_build_custom_missing_end_date():
     result = build_plexos_simulation(config)
 
     assert result.is_err()
+    assert result.error is not None
     assert "missing required 'end' date" in result.error
 
 
@@ -310,6 +315,7 @@ def test_build_custom_invalid_date_range():
     result = build_plexos_simulation(config)
 
     assert result.is_err()
+    assert result.error is not None
     assert "invalid date range" in result.error
 
 
@@ -488,6 +494,7 @@ def test_ingest_simulation_config_without_name():
     result = ingest_simulation_config_to_plexosdb(db, ClassEnum.Performance, mock_perf)
 
     assert result.is_err()
+    assert result.error is not None
     assert "must have a name" in result.error
 
 
@@ -594,7 +601,9 @@ def test_build_simulation_with_simulation_configs():
     # Check that simulation_configs is attached
     assert build_result.simulation_configs is not None
     assert "performance" in build_result.simulation_configs
-    assert build_result.simulation_configs["performance"].name == "MyPerformance"
+    perf = build_result.simulation_configs["performance"]
+    assert perf is not None
+    assert perf.name == "MyPerformance"
 
 
 def test_ingest_with_unknown_config_type(tmp_path):
@@ -811,7 +820,7 @@ def test_ingest_simulation_to_plexosdb_adds_model_attributes(tmp_path):
     model = PLEXOSModel(
         name="Model_2012",
         category="model_2012",
-        **{"Random Number Seed": "2718"},
+        **{"Random Number Seed": 2718},  # ty: ignore[invalid-argument-type]
     )
 
     horizon = PLEXOSHorizon(
@@ -1192,7 +1201,7 @@ def test_convert_simulation_config_to_attributes_returns_err_on_bad_object():
         alias = "BROKEN"
 
     class BrokenConfig:
-        model_fields = {"broken": FieldInfo()}
+        model_fields: typing.ClassVar[dict] = {"broken": FieldInfo()}
 
         def __getattr__(self, _name):
             raise RuntimeError("boom")

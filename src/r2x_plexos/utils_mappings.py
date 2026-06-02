@@ -1,7 +1,10 @@
 """MAPPING FOR CLASS ENUM."""
 
+from typing import cast
+
 from plexosdb import ClassEnum, CollectionEnum
 
+from .enums_compat import PURCHASER_CLASS_ENUM
 from .models import (
     PLEXOSBattery,
     PLEXOSDatafile,
@@ -12,6 +15,7 @@ from .models import (
     PLEXOSModel,
     PLEXOSNode,
     PLEXOSObject,
+    PLEXOSPurchaser,
     PLEXOSRegion,
     PLEXOSReserve,
     PLEXOSScenario,
@@ -40,6 +44,9 @@ PLEXOS_TYPE_MAP: dict[ClassEnum, type[PLEXOSObject]] = {
     ClassEnum.Model: PLEXOSModel,
     ClassEnum.Horizon: PLEXOSHorizon,
 }
+
+PLEXOS_TYPE_MAP[cast(ClassEnum, PURCHASER_CLASS_ENUM)] = PLEXOSPurchaser
+
 PLEXOS_TYPE_MAP_INVERTED = dict(zip(PLEXOS_TYPE_MAP.values(), PLEXOS_TYPE_MAP.keys(), strict=False))
 
 MEMBERSHIP_TYPE_MAP = {
@@ -89,4 +96,5 @@ STORAGE_TO_GENERATOR_TS_PROPERTY_MAP: dict[str, str] = {
 FIXED_TS_PROP: dict[type, str] = {
     PLEXOSReserve: "Min Provision",
     PLEXOSRegion: "Load",
+    PLEXOSPurchaser: "Max Load",
 }

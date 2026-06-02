@@ -44,6 +44,7 @@ def test_validate_simulation_attribute_invalid(plexos_db):
     """Test validation with invalid attribute."""
     result = validate_simulation_attribute(plexos_db, ClassEnum.Performance, "InvalidAttribute")
     assert result.is_err()
+    assert result.error is not None
     assert "Invalid attribute" in result.error
 
     result = validate_simulation_attribute(plexos_db, ClassEnum.Production, "NotARealAttribute")
@@ -209,8 +210,12 @@ def test_ingest_full_simulation_with_config():
     assert "diagnostic" in build_result.simulation_configs
 
     # Verify the config objects
-    assert build_result.simulation_configs["performance"].name == "Test_Perf"
-    assert build_result.simulation_configs["st_schedule"].name == "Test_ST"
+    perf_config = build_result.simulation_configs["performance"]
+    st_config = build_result.simulation_configs["st_schedule"]
+    assert perf_config is not None
+    assert st_config is not None
+    assert perf_config.name == "Test_Perf"
+    assert st_config.name == "Test_ST"
     assert build_result.simulation_configs["diagnostic"] is None
 
     # Check for data type consistency

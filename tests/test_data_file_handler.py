@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
+from infrasys import SingleTimeSeries
 
 from r2x_plexos.datafile_handler import (
     DatetimeComponentsFile,
@@ -40,7 +41,7 @@ from r2x_plexos.datafile_handler import (
 )
 
 if TYPE_CHECKING:
-    from r2x_plexos.models.timeslice import PlexosTimeSlice
+    from r2x_plexos.models.timeslice import PLEXOSTimeslice as PlexosTimeSlice
 
 
 class MockTimeslice:
@@ -212,6 +213,7 @@ def test_parse_timeslice_file(
     assert "SPP-N_GAS (SINGLE FUEL)" in result
 
     ts = result["SPP-N_GAS (SINGLE FUEL)"]
+    assert isinstance(ts, SingleTimeSeries)
 
     # A non-leap year should have 8760 hours
     assert len(ts.data) == 8760
@@ -245,6 +247,7 @@ def test_winter_as_complement_of_summer(timeslice_dataframe: pl.LazyFrame) -> No
     result = parse_file(file_type, timeslice_dataframe, datetime(2023, 1, 1), 2023)
 
     ts = result["SPP-N_GAS (SINGLE FUEL)"]
+    assert isinstance(ts, SingleTimeSeries)
 
     # Check the values in last 100 hours (December)
     for i in range(8760 - 100, 8760):
@@ -304,7 +307,7 @@ def test_extract_all_time_series(mock_load_csv: MagicMock) -> None:
     _ = extract_file_data("dummy/path", datetime(2023, 1, 1), 2023)
 
     # Verify results - we should have one timeseries for Generator1
-    assert "Generator1" in mock_load_csv.return_value.collect()["Name"]
+    assert "Generator1" in mock_load_csv.return_value.collect()["Name"]  # ty: ignore[not-subscriptable]
     assert mock_load_csv.call_args[0][0] == "dummy/path"
 
 
@@ -418,7 +421,7 @@ def test_parse_datetime_string() -> None:
     assert parse_datetime_string("2023-01-01T12:30:45") == datetime(2023, 1, 1, 12, 30, 45)
     assert parse_datetime_string("1/1/2023 14:30") == datetime(2023, 1, 1, 14, 30)
     assert parse_datetime_string("invalid_date") is None
-    assert parse_datetime_string(datetime(2023, 1, 1)) == datetime(2023, 1, 1)
+    assert parse_datetime_string(datetime(2023, 1, 1)) == datetime(2023, 1, 1)  # ty: ignore[invalid-argument-type]
 
 
 @pytest.fixture
@@ -429,12 +432,12 @@ def mock_timeslice_with_patterns() -> MockTimeslice:
 
 
 def test_extract_patterns_from_timeslice(mock_timeslice_with_patterns: MockTimeslice) -> None:
-    patterns = extract_patterns_from_timeslice(mock_timeslice_with_patterns)
+    patterns = extract_patterns_from_timeslice(mock_timeslice_with_patterns)  # ty: ignore[invalid-argument-type]
     assert patterns == ["M1-3", "M6-8"]
 
     timeslice_no_patterns = MockTimeslice("Empty")
     timeslice_no_patterns.include.get_timeslices = MagicMock(return_value=None)
-    patterns = extract_patterns_from_timeslice(timeslice_no_patterns)
+    patterns = extract_patterns_from_timeslice(timeslice_no_patterns)  # ty: ignore[invalid-argument-type]
     assert patterns == []
 
 
@@ -568,6 +571,8 @@ def test_parse_pattern_file_with_bands(pattern_dataframe_with_bands: pl.LazyFram
 
     ts1 = result["Generator1_band_1"]
     ts2 = result["Generator1_band_2"]
+    assert isinstance(ts1, SingleTimeSeries)
+    assert isinstance(ts2, SingleTimeSeries)
 
     assert len(ts1.data) == 8760
     assert len(ts2.data) == 8760
@@ -585,6 +590,7 @@ def test_parse_monthly_file(monthly_dataframe: pl.LazyFrame) -> None:
     assert "Generator1" in result
 
     ts = result["Generator1"]
+    assert isinstance(ts, SingleTimeSeries)
     assert len(ts.data) == 8760
 
     ranges = get_month_hour_ranges(2023)
@@ -645,6 +651,8 @@ def test_parse_hourly_components_file(hourly_components_dataframe: pl.LazyFrame)
 
     ts1 = result["Generator1"]
     ts2 = result["Generator2"]
+    assert isinstance(ts1, SingleTimeSeries)
+    assert isinstance(ts2, SingleTimeSeries)
 
     assert len(ts1.data) == 8760
     assert len(ts2.data) == 8760
@@ -682,6 +690,8 @@ def test_parse_datetime_components_file(datetime_components_dataframe: pl.LazyFr
 
     ts1 = result["Generator1"]
     ts2 = result["Generator2"]
+    assert isinstance(ts1, SingleTimeSeries)
+    assert isinstance(ts2, SingleTimeSeries)
 
     assert len(ts1.data) == 8760
     assert len(ts2.data) == 8760
@@ -712,6 +722,8 @@ def test_parse_yearly_file(yearly_file_dataframe: pl.LazyFrame) -> None:
 
     ts1 = result["Generator1"]
     ts2 = result["Generator2"]
+    assert isinstance(ts1, SingleTimeSeries)
+    assert isinstance(ts2, SingleTimeSeries)
 
     assert len(ts1.data) == 8760
     assert len(ts2.data) == 8760
@@ -770,6 +782,7 @@ def test_parse_hourly_components_invalid_data() -> None:
     assert len(result) == 1
     assert "Generator1" in result
     ts = result["Generator1"]
+    assert isinstance(ts, SingleTimeSeries)
     # Invalid data should be skipped, resulting in mostly zero values
     assert len(ts.data) == 8760
 
@@ -783,6 +796,7 @@ def test_parse_datetime_components_invalid_datetime() -> None:
     assert len(result) == 1
     assert "Generator1" in result
     ts = result["Generator1"]
+    assert isinstance(ts, SingleTimeSeries)
     assert len(ts.data) == 8760
     assert ts.data[1] == 110.0  # Valid row should be processed
 
@@ -887,7 +901,7 @@ def test_hourly_daily_requires_columns() -> None:
 
 
 def test_hourly_daily_missing_hour_data() -> None:
-    data = {"Year": [2024], "Month": [1], "Day": [1]}
+    data: dict[str, list[int | float]] = {"Year": [2024], "Month": [1], "Day": [1]}
     for hour in range(1, 24):
         data[str(hour)] = [1.0]
 
@@ -904,7 +918,7 @@ def test_safe_float_conversion_handles_fraction() -> None:
 
 def test_get_timeslice_patterns_hours_without_include() -> None:
     timeslice = SimpleNamespace(name="OffPeak")
-    assert get_timeslice_patterns_hours(timeslice, 2024) == set()
+    assert get_timeslice_patterns_hours(timeslice, 2024) == set()  # ty: ignore[invalid-argument-type]
 
 
 def test_timeslice_file_requires_year(mock_timeslices: list[MockTimeslice]) -> None:
@@ -932,7 +946,7 @@ def test_timeslice_file_lowercase_name_column(mock_timeslices: list[MockTimeslic
 
 def test_timeslice_file_skips_mismatched_year_column(monkeypatch: pytest.MonkeyPatch) -> None:
     timeslice = SimpleNamespace(name="YR-2023")
-    file_type = TimesliceFile([timeslice])
+    file_type = TimesliceFile([timeslice])  # ty: ignore[invalid-argument-type]
     df = pl.LazyFrame({"Name": ["Gen"], "YR-2023": [1.0]})
 
     monkeypatch.setattr(
@@ -941,4 +955,6 @@ def test_timeslice_file_skips_mismatched_year_column(monkeypatch: pytest.MonkeyP
     )
 
     result = parse_file(file_type, df, datetime(2024, 1, 1), 2024)
-    assert result["Gen"].data[0] == 0.0
+    ts_gen = result["Gen"]
+    assert isinstance(ts_gen, SingleTimeSeries)
+    assert ts_gen.data[0] == 0.0

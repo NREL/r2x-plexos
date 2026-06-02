@@ -1,6 +1,7 @@
 import contextlib
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -38,11 +39,12 @@ def serialized_plexos_system(tmp_path, db_all_gen_types, plexos_config) -> "Syst
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=plexos_config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db_all_gen_types
 
     result = parser.run()
     sys = result.system
+    assert sys is not None
 
     serialized_sys_fpath = tmp_path / "test_plexos_system.json"
     sys.to_json(serialized_sys_fpath)
@@ -54,7 +56,7 @@ def test_setup_configuration_creates_simulation(plexos_config, serialized_plexos
     sys = serialized_plexos_system
 
     ctx = PluginContext(config=plexos_config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     exporter.db = template_db
 
@@ -116,7 +118,7 @@ def test_setup_configuration_skips_existing(plexos_config, serialized_plexos_sys
     sys = serialized_plexos_system
 
     ctx = PluginContext(config=plexos_config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     exporter.db = template_db
 
@@ -147,7 +149,7 @@ def test_setup_configuration_missing_reference_year(template_db):
     sys = System(name="test_system")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     exporter.db = template_db
 
@@ -169,7 +171,7 @@ def test_exporter_with_wrong_config(mocker, caplog):
     mock_system = mocker.Mock()
 
     ctx = PluginContext(config=bad_config, system=mock_system)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))  # ty: ignore[invalid-argument-type]
 
     result = exporter.on_export()
     assert result.is_err()
@@ -192,14 +194,14 @@ def test_roundtrip_db_parser_system_exporter_db(db_all_gen_types: PlexosDB, tmp_
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = original_db
 
     result = parser.run()
     system = result.system
 
     export_ctx = PluginContext(config=config, system=system)
-    exporter = PLEXOSExporter.from_context(export_ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(export_ctx))
     exporter.exclude_defaults = True
     exporter.output_path = str(tmp_path)
     exporter.db = template_db
@@ -272,8 +274,8 @@ def test_exporter_init_with_invalid_config_type():
         pass
 
     sys = System(name="test")
-    ctx = PluginContext(config=DummyConfig(), system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    ctx = PluginContext(config=DummyConfig(), system=sys)  # ty: ignore[invalid-argument-type]
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))  # ty: ignore[invalid-argument-type]
 
     result = exporter.on_export()
     assert result.is_err()
@@ -284,7 +286,7 @@ def test_exporter_init_with_existing_db(tmp_path, db_all_gen_types):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = db_all_gen_types
 
     assert exporter.db is db_all_gen_types
@@ -295,13 +297,14 @@ def test_setup_configuration_missing_simulation_config(monkeypatch):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     build_result = exporter.on_export()
     assert build_result.is_ok()
 
     monkeypatch.setattr(exporter.config, "simulation_config", None)
 
+    assert exporter.db is not None
     for model_name in exporter.db.list_objects_by_class(ClassEnum.Model):
         exporter.db.delete_object(ClassEnum.Model, name=model_name)
     for horizon_name in exporter.db.list_objects_by_class(ClassEnum.Horizon):
@@ -317,7 +320,7 @@ def test_prepare_export_skips_types(mocker, template_db):
     sys.get_component_types.return_value = []
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     exporter.db = template_db
 
@@ -335,7 +338,7 @@ def test_prepare_export_no_class_enum(mocker, template_db):
     sys.get_component_types.return_value = [DummyType]
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     exporter.db = template_db
 
@@ -349,7 +352,7 @@ def test_export_time_series_no_components(mocker):
     sys.get_component_types.return_value = []
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     result = exporter.export_time_series()
     assert result.is_ok()
@@ -375,7 +378,7 @@ def test_export_time_series_csv_error(mocker):
     mocker.patch("r2x_plexos.exporter.export_time_series_csv", return_value=Err("fail"))
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     result = exporter.export_time_series()
     assert result.is_err()
@@ -387,7 +390,7 @@ def test_add_component_memberships_no_memberships(mocker):
     sys.get_supplemental_attributes.return_value = []
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     exporter._add_component_memberships()
 
@@ -401,7 +404,7 @@ def test_add_component_memberships_skips_invalid(mocker):
     sys.get_supplemental_attributes.return_value = [membership]
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     exporter._add_component_memberships()
 
@@ -411,7 +414,7 @@ def test_create_datafile_objects_no_dir(tmp_path, mocker):
     sys = mocker.Mock()
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.output_path = str(tmp_path)
 
     exporter._create_datafile_objects()
@@ -423,7 +426,7 @@ def test_add_component_datafile_objects_no_datafiles(mocker):
     sys.get_components.return_value = []
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     exporter._add_component_datafile_objects()
 
@@ -437,7 +440,7 @@ def test_add_component_datafile_objects_filename_none(mocker):
     sys.get_components.return_value = [datafile]
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     mocker.patch.object(exporter, "_create_datafile_objects")
     exporter._add_component_datafile_objects()
@@ -448,7 +451,7 @@ def test_validate_xml_invalid(tmp_path):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     invalid_xml = tmp_path / "invalid.xml"
     invalid_xml.write_text("<notxml>")
@@ -461,7 +464,7 @@ def test_on_export_db_none_initializes_from_template(tmp_path):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.output_path = str(tmp_path)
 
     exporter.db = None
@@ -485,7 +488,7 @@ def test_on_export_uses_custom_template(tmp_path):
     sys = System(name="test")
 
     ctx = PluginContext(config=config_with_template, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = None
     exporter.output_path = str(tmp_path)
 
@@ -501,7 +504,7 @@ def test_on_export_creates_scenario_if_missing(template_db, tmp_path):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
     exporter.plexos_scenario = "new_scenario"
     exporter.output_path = str(tmp_path)
@@ -521,13 +524,13 @@ def test_on_export_exception_returns_err(template_db):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     with patch.object(exporter, "setup_configuration", side_effect=Exception("Test error")):
         result = exporter.on_export()
     assert result.is_err()
-    assert "Export failed" in result.error
+    assert "Export failed" in str(result.error)
 
 
 def test_setup_configuration_with_existing_models_and_horizons(template_db):
@@ -536,7 +539,7 @@ def test_setup_configuration_with_existing_models_and_horizons(template_db):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     if not template_db.list_objects_by_class(ClassEnum.Model):
@@ -555,7 +558,7 @@ def test_setup_configuration_missing_horizon_year(template_db):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     for model in template_db.list_objects_by_class(ClassEnum.Model):
@@ -566,7 +569,7 @@ def test_setup_configuration_missing_horizon_year(template_db):
     result = exporter.setup_configuration()
 
     assert result.is_err()
-    assert "horizon_year" in result.error.lower()
+    assert "horizon_year" in str(result.error).lower()
 
 
 def test_setup_configuration_build_simulation_fails(template_db):
@@ -575,7 +578,7 @@ def test_setup_configuration_build_simulation_fails(template_db):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     for model in template_db.list_objects_by_class(ClassEnum.Model):
@@ -589,7 +592,7 @@ def test_setup_configuration_build_simulation_fails(template_db):
         result = exporter.setup_configuration()
 
     assert result.is_err()
-    assert "Failed to build simulation" in result.error
+    assert "Failed to build simulation" in str(result.error)
 
 
 def test_setup_configuration_ingest_fails(template_db):
@@ -598,7 +601,7 @@ def test_setup_configuration_ingest_fails(template_db):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     for model in template_db.list_objects_by_class(ClassEnum.Model):
@@ -612,7 +615,7 @@ def test_setup_configuration_ingest_fails(template_db):
         result = exporter.setup_configuration()
 
     assert result.is_err()
-    assert "Failed to ingest simulation" in result.error
+    assert "Failed to ingest simulation" in str(result.error)
 
 
 def test_prepare_export_db_none_returns_err():
@@ -621,13 +624,13 @@ def test_prepare_export_db_none_returns_err():
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = None
 
     result = exporter.prepare_export()
 
     assert result.is_err()
-    assert "Database not initialized" in result.error
+    assert "Database not initialized" in str(result.error)
 
 
 def test_prepare_export_component_without_mapping(template_db, caplog):
@@ -639,7 +642,7 @@ def test_prepare_export_component_without_mapping(template_db, caplog):
     sys.add_component(gen)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     with patch("r2x_plexos.exporter.PLEXOS_TYPE_MAP_INVERTED", {}):
@@ -663,7 +666,7 @@ def test_prepare_export_components_with_same_category_grouped(template_db):
     sys.add_component(gen3)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     result = exporter.prepare_export()
@@ -685,7 +688,7 @@ def test_prepare_export_add_objects_raises_key_error(template_db):
     sys.add_component(gen)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     with patch.object(exporter, "_add_objects_safe", side_effect=KeyError("Invalid category")):  # noqa: SIM117
@@ -699,13 +702,13 @@ def test_postprocess_export_db_none_returns_err():
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = None
 
     result = exporter.postprocess_export()
 
     assert result.is_err()
-    assert "Database not initialized" in result.error
+    assert "Database not initialized" in str(result.error)
 
 
 def test_postprocess_export_time_series_fails(template_db, tmp_path):
@@ -714,7 +717,7 @@ def test_postprocess_export_time_series_fails(template_db, tmp_path):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
     exporter.output_path = str(tmp_path)
 
@@ -725,7 +728,7 @@ def test_postprocess_export_time_series_fails(template_db, tmp_path):
         result = exporter.postprocess_export()
 
     assert result.is_err()
-    assert "TS export failed" in result.error
+    assert "TS export failed" in str(result.error)
 
 
 def test_postprocess_export_invalid_xml(template_db, tmp_path):
@@ -734,7 +737,7 @@ def test_postprocess_export_invalid_xml(template_db, tmp_path):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
     exporter.output_path = str(tmp_path)
 
@@ -743,7 +746,7 @@ def test_postprocess_export_invalid_xml(template_db, tmp_path):
         result = exporter.postprocess_export()
 
     assert result.is_err()
-    assert "not valid" in result.error
+    assert "not valid" in str(result.error)
 
 
 def test_add_component_properties_db_none_logs_error(caplog):
@@ -752,7 +755,7 @@ def test_add_component_properties_db_none_logs_error(caplog):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = None
 
     exporter._add_component_properties()
@@ -771,7 +774,7 @@ def test_add_component_properties_adds_datafile_filename(template_db):
     sys.add_component(datafile)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     template_db.add_object(ClassEnum.DataFile, "TestFile", category="CSV")
@@ -796,7 +799,7 @@ def test_add_component_properties_filters_metadata_fields(template_db):
     sys.add_component(gen)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     template_db.add_object(ClassEnum.Generator, "TestGen", category="thermal")
@@ -822,11 +825,11 @@ def test_add_component_properties_handles_dict_with_text(template_db):
     # Create a generator with a property that's a dict with 'text'
     gen = PLEXOSGenerator(name="TestGen", category="thermal", units=1, rating=50.0)
     # Manually set a property as dict with 'text'
-    gen.max_capacity = PLEXOSPropertyValue.from_dict({"datafile_name": "test.csv"})
+    gen.max_capacity = PLEXOSPropertyValue.from_dict({"datafile_name": "test.csv"})  # ty: ignore[invalid-assignment]
     sys.add_component(gen)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     template_db.add_object(ClassEnum.Generator, "TestGen", category="thermal")
@@ -852,7 +855,7 @@ def test_add_component_properties_skips_none_values(template_db):
     sys.add_component(gen)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     template_db.add_object(ClassEnum.Generator, "TestGen", category="thermal")
@@ -887,7 +890,7 @@ def test_add_component_properties_does_not_export_explicit_default_values(templa
     sys.add_component(gen)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
     exporter.exclude_defaults = True
 
@@ -977,7 +980,7 @@ def test_add_component_memberships_db_none_logs_error(caplog):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = None
 
     exporter._add_component_memberships()
@@ -991,7 +994,7 @@ def test_add_component_memberships_no_memberships_warns(template_db, caplog):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     exporter._add_component_memberships()
@@ -1019,7 +1022,7 @@ def test_add_component_memberships_skips_missing_parent_or_child(template_db, ca
     mock_membership.collection = CollectionEnum.Generators
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     with patch.object(sys, "get_supplemental_attributes", return_value=[mock_membership]):
@@ -1044,7 +1047,7 @@ def test_add_component_memberships_no_valid_records_warns(template_db, caplog):
     mock_membership.collection = None
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     with patch.object(sys, "get_supplemental_attributes", return_value=[mock_membership]):
@@ -1059,7 +1062,7 @@ def test_add_component_datafile_objects_db_none(caplog):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = None
 
     exporter._add_component_datafile_objects()
@@ -1078,7 +1081,7 @@ def test_add_component_datafile_objects_updates_object_ids(template_db):
     sys.add_component(datafile)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     exporter._add_component_datafile_objects()
@@ -1095,7 +1098,7 @@ def test_add_component_datafile_objects_handles_no_filename(template_db, caplog)
     sys.add_component(datafile)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     exporter._add_component_datafile_objects()
@@ -1114,7 +1117,7 @@ def test_export_time_series_no_components_with_ts(template_db):
     sys.add_component(gen)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     result = exporter.export_time_series()
@@ -1128,7 +1131,7 @@ def test_create_datafile_objects_no_directory(tmp_path, caplog):
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     # Use a non-existent path that won't be created
     non_existent_path = tmp_path / "does_not_exist" / "nested"
@@ -1152,7 +1155,7 @@ def test_create_datafile_objects_creates_from_csv_files(tmp_path):
     (data_dir / "test2.csv").write_text("col1,col2\n3,4\n")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.output_path = str(tmp_path)
 
     exporter._create_datafile_objects()
@@ -1168,14 +1171,14 @@ def test_on_export_setup_configuration_returns_err(template_db, tmp_path):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
     exporter.output_path = str(tmp_path)
 
     with patch.object(exporter, "setup_configuration", return_value=Err("setup failed")):
         result = exporter.on_export()
     assert result.is_err()
-    assert "setup failed" in result.error
+    assert "setup failed" in str(result.error)
 
 
 def test_on_export_prepare_export_returns_err(template_db, tmp_path):
@@ -1183,7 +1186,7 @@ def test_on_export_prepare_export_returns_err(template_db, tmp_path):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
     exporter.output_path = str(tmp_path)
 
@@ -1192,7 +1195,7 @@ def test_on_export_prepare_export_returns_err(template_db, tmp_path):
             with patch.object(exporter, "prepare_export", return_value=Err("prepare failed")):
                 result = exporter.on_export()
     assert result.is_err()
-    assert "prepare failed" in result.error
+    assert "prepare failed" in str(result.error)
 
 
 def test_on_export_postprocess_export_returns_err(template_db, tmp_path):
@@ -1200,7 +1203,7 @@ def test_on_export_postprocess_export_returns_err(template_db, tmp_path):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
     exporter.output_path = str(tmp_path)
 
@@ -1210,7 +1213,7 @@ def test_on_export_postprocess_export_returns_err(template_db, tmp_path):
                 with patch.object(exporter, "postprocess_export", return_value=Err("post failed")):
                     result = exporter.on_export()
     assert result.is_err()
-    assert "post failed" in result.error
+    assert "post failed" in str(result.error)
 
 
 def test_setup_configuration_db_none_returns_err():
@@ -1218,12 +1221,12 @@ def test_setup_configuration_db_none_returns_err():
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = None
 
     result = exporter.setup_configuration()
     assert result.is_err()
-    assert "Database not initialized" in result.error
+    assert "Database not initialized" in str(result.error)
 
 
 def test_deduplicate_property_records_float_normalization():
@@ -1231,7 +1234,7 @@ def test_deduplicate_property_records_float_normalization():
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     records = [
         {"name": "Gen1", "property": "Rating", "value": 50.0},
@@ -1247,7 +1250,7 @@ def test_deduplicate_property_records_merges_fields():
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     records = [
         {
@@ -1295,7 +1298,7 @@ def test_get_required_properties_unknown_type_returns_set():
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     class DummyComp:
         category = None
@@ -1309,7 +1312,7 @@ def test_link_datafiles_to_components_db_none(caplog):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = None
 
     exporter._link_datafiles_to_components()
@@ -1321,7 +1324,7 @@ def test_link_datafiles_to_components_missing_output_dir(template_db, tmp_path, 
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     non_existent = tmp_path / "no_such_dir" / "Data"
@@ -1335,7 +1338,7 @@ def test_get_time_series_property_name_returns_none_for_unknown():
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     class DummyComp:
         pass
@@ -1351,7 +1354,7 @@ def test_get_time_series_property_name_fixed_types():
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     assert exporter._get_time_series_property_name(PLEXOSReserve(name="r")) == "Min Provision"
     assert exporter._get_time_series_property_name(PLEXOSRegion(name="r")) == "Load"
@@ -1365,7 +1368,7 @@ def test_build_generator_to_storage_map_with_pairs(mocker):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys_obj = System(name="test")
     ctx = PluginContext(config=config, system=sys_obj)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     gen = PLEXOSGenerator(name="HydroGen", category="hydro-turbine", units=1, rating=100.0)
     storage = PLEXOSStorage(name="HydroRes")
@@ -1402,7 +1405,7 @@ def test_export_time_series_with_weather_and_solve_year(mocker, tmp_path):
     data_dir.mkdir()
 
     ctx = PluginContext(config=config, system=sys_mock)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.weather_year = 2020
     exporter.solve_year = 2024
 
@@ -1411,6 +1414,110 @@ def test_export_time_series_with_weather_and_solve_year(mocker, tmp_path):
 
     result = exporter.export_time_series()
     assert result.is_ok()
+
+
+def test_export_time_series_purchaser_without_filter_func_dependency(mocker, tmp_path):
+    """Ensure purchaser TS export uses has_time_series gating without get_components filter_func."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+
+    class PurchaserType:
+        pass
+
+    comp = mocker.Mock()
+    comp.name = "Purchaser_H2"
+    type(comp).__name__ = "PLEXOSPurchaser"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "ReEDSElectrolyzerDemand"
+    ts_key.features = {}
+    ts_key.initial_timestamp = None
+
+    ts_obj = mocker.Mock()
+    ts_obj.data = [1.0, 1.0]
+
+    sys.get_component_types.return_value = [PurchaserType]
+    # Intentionally provide a callable that accepts only component_type.
+    # If exporter passes filter_func, this test would fail.
+    sys.get_components.side_effect = lambda component_type: [comp]
+    sys.has_time_series.return_value = True
+    sys.list_time_series_keys.return_value = [ts_key]
+    sys.list_time_series.return_value = [ts_obj]
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+
+    ctx = PluginContext(config=config, system=sys)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
+
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=data_dir)
+    export_csv = mocker.patch("r2x_plexos.exporter.export_time_series_csv", return_value=Ok(None))
+
+    result = exporter.export_time_series()
+    assert result.is_ok()
+    export_csv.assert_called_once()
+
+
+def test_export_time_series_separates_same_ts_key_by_component_class(mocker, tmp_path):
+    """Same TS key on different classes should generate distinct class-specific CSVs."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = mocker.Mock()
+
+    class GeneratorType:
+        pass
+
+    class PurchaserType:
+        pass
+
+    gen = mocker.Mock()
+    gen.name = "Gen1"
+    type(gen).__name__ = "PLEXOSGenerator"
+
+    purchaser = mocker.Mock()
+    purchaser.name = "H2Purchaser"
+    type(purchaser).__name__ = "PLEXOSPurchaser"
+
+    ts_key_gen = mocker.Mock()
+    ts_key_gen.name = "max_active_power"
+    ts_key_gen.features = {}
+    ts_key_gen.initial_timestamp = None
+    ts_key_gen.resolution = None
+
+    ts_key_purch = mocker.Mock()
+    ts_key_purch.name = "max_active_power"
+    ts_key_purch.features = {}
+    ts_key_purch.initial_timestamp = None
+    ts_key_purch.resolution = None
+
+    ts_obj = mocker.Mock()
+    ts_obj.data = [1.0, 2.0]
+
+    sys.get_component_types.return_value = [GeneratorType, PurchaserType]
+    sys.get_components.side_effect = lambda component_type: (
+        [gen] if component_type is GeneratorType else [purchaser] if component_type is PurchaserType else []
+    )
+    sys.has_time_series.return_value = True
+    sys.list_time_series_keys.side_effect = lambda component: (
+        [ts_key_gen] if component is gen else [ts_key_purch]
+    )
+    sys.list_time_series.return_value = [ts_obj]
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+
+    ctx = PluginContext(config=config, system=sys)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
+
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=data_dir)
+    export_csv = mocker.patch("r2x_plexos.exporter.export_time_series_csv", return_value=Ok(None))
+
+    result = exporter.export_time_series()
+    assert result.is_ok()
+    assert export_csv.call_count == 2
+
+    exported_paths = [call.args[0].name for call in export_csv.call_args_list]
+    assert any(name.startswith("PLEXOSGenerator_max_active_power_") for name in exported_paths)
+    assert any(name.startswith("PLEXOSPurchaser_max_active_power_") for name in exported_paths)
 
 
 def test_create_datafile_objects_skips_existing_component(tmp_path):
@@ -1423,7 +1530,7 @@ def test_create_datafile_objects_skips_existing_component(tmp_path):
     (data_dir / "ts1.csv").write_text("col\n1\n")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.output_path = str(tmp_path)
 
     exporter._create_datafile_objects()
@@ -1437,7 +1544,7 @@ def test_add_reports_runs_without_error(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     with patch.object(PLEXOSConfig, "load_reports", return_value=[]):
@@ -1455,7 +1562,7 @@ def test_add_component_properties_list_raw(template_db):
     sys.add_component(reserve)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     template_db.add_object(ClassEnum.Reserve, "Res1", category="variable-reserve")
@@ -1477,7 +1584,7 @@ def test_add_component_properties_skips_ts_property(template_db, mocker):
     sys.add_component(region)
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     template_db.add_object(ClassEnum.Region, "RegA", category="default")
@@ -1502,7 +1609,7 @@ def test_resolve_template_path_default():
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     resolved = exporter._resolve_template_path()
 
@@ -1515,7 +1622,7 @@ def test_resolve_template_path_version_key_plexos92():
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     resolved = exporter._resolve_template_path()
 
@@ -1528,7 +1635,7 @@ def test_resolve_template_path_invalid_raises():
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     with pytest.raises(FileNotFoundError):
         exporter._resolve_template_path()
@@ -1540,7 +1647,7 @@ def test_sync_runtime_options_does_not_override_runtime_weather_year():
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.weather_year = 2012
 
     exporter._sync_runtime_options_from_config()
@@ -1554,7 +1661,7 @@ def test_build_xml_filename_uses_runtime_year_overrides():
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.solve_year = 2023
     exporter.weather_year = 2012
 
@@ -1568,7 +1675,7 @@ def test_get_required_properties_for_generator_thermal_category(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     gen = PLEXOSGenerator(name="ThermalGen", category="coaloldscr", units=1, rating=50.0)
     result = exporter._get_required_properties_for_component(gen, "PLEXOSGenerator")
@@ -1582,7 +1689,7 @@ def test_get_required_properties_for_generator_renewable_dispatch(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     gen = PLEXOSGenerator(name="WindGen", category="wind-ons", units=1, rating=100.0)
     result = exporter._get_required_properties_for_component(gen, "PLEXOSGenerator")
@@ -1595,7 +1702,7 @@ def test_get_required_properties_alias_thermal_normalizes(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys = System(name="test")
     ctx = PluginContext(config=config, system=sys)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
 
     gen = PLEXOSGenerator(name="TGen", category="thermal", units=1, rating=50.0)
     result = exporter._get_required_properties_for_component(gen, "PLEXOSGenerator")
@@ -1608,7 +1715,7 @@ def test_bulk_resolve_object_ids_returns_correct_ids(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys_obj = System(name="test")
     ctx = PluginContext(config=config, system=sys_obj)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     template_db.add_object(ClassEnum.Generator, "BulkGen1")
@@ -1625,7 +1732,7 @@ def test_bulk_resolve_object_ids_empty_input(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys_obj = System(name="test")
     ctx = PluginContext(config=config, system=sys_obj)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     result = exporter._bulk_resolve_object_ids({ClassEnum.Generator: set()})
@@ -1637,7 +1744,7 @@ def test_add_objects_safe_adds_new_objects(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys_obj = System(name="test")
     ctx = PluginContext(config=config, system=sys_obj)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     exporter._add_objects_safe(ClassEnum.Generator, ["SafeGen1", "SafeGen2"], category="thermal")
@@ -1652,7 +1759,7 @@ def test_add_objects_safe_skips_existing(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys_obj = System(name="test")
     ctx = PluginContext(config=config, system=sys_obj)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     template_db.add_object(ClassEnum.Generator, "ExistingGen")
@@ -1669,7 +1776,7 @@ def test_add_objects_safe_empty_list_does_nothing(template_db):
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys_obj = System(name="test")
     ctx = PluginContext(config=config, system=sys_obj)
-    exporter = PLEXOSExporter.from_context(ctx)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
     exporter.db = template_db
 
     before = len(template_db.list_objects_by_class(ClassEnum.Generator))

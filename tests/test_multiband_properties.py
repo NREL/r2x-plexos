@@ -1,5 +1,7 @@
 """Tests for multi-band property support."""
 
+from typing import cast
+
 from r2x_core import DataFile, DataStore, PluginContext
 from r2x_plexos import PLEXOSConfig, PLEXOSParser, PLEXOSPropertyValue, scenario_priority
 from r2x_plexos.models.generator import PLEXOSGenerator
@@ -17,7 +19,7 @@ def test_heat_rate_multi_band_no_priority():
         units="GJ/MWh",
     )
 
-    gen = PLEXOSGenerator(name="ThermalGen1", heat_rate=heat_rate_prop)
+    gen = PLEXOSGenerator(name="ThermalGen1", heat_rate=heat_rate_prop)  # ty: ignore[invalid-argument-type]
 
     result = gen.heat_rate
 
@@ -35,7 +37,7 @@ def test_heat_rate_single_band_returns_value():
         units="GJ/MWh",
     )
 
-    gen = PLEXOSGenerator(name="ThermalGen2", heat_rate=heat_rate_prop)
+    gen = PLEXOSGenerator(name="ThermalGen2", heat_rate=heat_rate_prop)  # ty: ignore[invalid-argument-type]
 
     result = gen.heat_rate
 
@@ -55,7 +57,7 @@ def test_heat_rate_multi_band_with_priority():
         units="GJ/MWh",
     )
 
-    gen = PLEXOSGenerator(name="ThermalGen3", heat_rate=heat_rate_prop)
+    gen = PLEXOSGenerator(name="ThermalGen3", heat_rate=heat_rate_prop)  # ty: ignore[invalid-argument-type]
 
     with scenario_priority({"Base": 1, "High": 2}):
         result = gen.heat_rate
@@ -100,11 +102,12 @@ def test_parser_multiband_heat_rate(db_thermal_gen_multiband, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     gen = system.get_component(PLEXOSGenerator, "thermal-01")
     assert gen is not None
@@ -133,7 +136,7 @@ def test_multiband_with_scenario_priority_no_scenarios():
         units="GJ/MWh",
     )
 
-    gen = PLEXOSGenerator(name="TestGen", heat_rate=heat_rate_prop)
+    gen = PLEXOSGenerator(name="TestGen", heat_rate=heat_rate_prop)  # ty: ignore[invalid-argument-type]
 
     # Set scenario priority context (simulates parser.build_system() behavior)
     with scenario_priority({"Scenario1": 1, "Scenario2": 2}):

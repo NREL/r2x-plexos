@@ -1,5 +1,7 @@
 """Test variable resolution with constant values."""
 
+from typing import cast
+
 from r2x_core import DataFile, DataStore, PluginContext
 from r2x_plexos import PLEXOSConfig, PLEXOSParser
 from r2x_plexos.models.datafile import PLEXOSDatafile
@@ -19,18 +21,21 @@ def test_variable_timeseries(db_with_variable_monthly, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     sys = result.system
+    assert sys is not None
 
     generator_component = sys.get_component(PLEXOSGenerator, "TestGen")
     datafile_component = sys.get_component(PLEXOSDatafile, "Ratings")
 
     rating_value = generator_component.get_property_value("rating")
     assert isinstance(rating_value, PLEXOSPropertyValue)
-    assert rating_value.get_entry().datafile_name == datafile_component.name
+    rating_entry = rating_value.get_entry()
+    assert rating_entry is not None
+    assert rating_entry.datafile_name == datafile_component.name
     assert rating_value.has_datafile()
     assert generator_component.rating == 62.48
 

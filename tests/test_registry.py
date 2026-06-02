@@ -4,6 +4,7 @@ from plexosdb.enums import ClassEnum, CollectionEnum
 
 from r2x_plexos.models.generator import PLEXOSGenerator
 from r2x_plexos.models.node import PLEXOSNode
+from r2x_plexos.models.purchaser import PLEXOSPurchaser
 from r2x_plexos.models.registry import PLEXOSComponentRegistry
 from r2x_plexos.models.storage import PLEXOSStorage
 
@@ -20,6 +21,9 @@ def test_get_class_enum_with_component_class():
     class_enum = PLEXOSComponentRegistry.get_class_enum(PLEXOSNode)
     assert class_enum == ClassEnum.Node
 
+    class_enum = PLEXOSComponentRegistry.get_class_enum(PLEXOSPurchaser)
+    assert class_enum == ClassEnum.Purchaser
+
 
 def test_get_class_enum_with_component_instance():
     """Test getting ClassEnum from a component instance.
@@ -34,6 +38,10 @@ def test_get_class_enum_with_component_instance():
     node = PLEXOSNode(name="test-node", object_id=2)
     class_enum = PLEXOSComponentRegistry.get_class_enum(node)
     assert class_enum == ClassEnum.Node
+
+    purchaser = PLEXOSPurchaser(name="test-purchaser", object_id=3)
+    class_enum = PLEXOSComponentRegistry.get_class_enum(purchaser)
+    assert class_enum == ClassEnum.Purchaser
 
 
 def test_get_class_enum_unregistered_component():
@@ -150,7 +158,7 @@ def test_determine_collection_with_unregistered_parent():
     parent = UnregisteredParent()
     child = PLEXOSNode(name="test-node", object_id=1)
 
-    collection_enum = PLEXOSComponentRegistry.determine_collection(parent, child)
+    collection_enum = PLEXOSComponentRegistry.determine_collection(parent, child)  # ty: ignore[invalid-argument-type]
     assert collection_enum is None
 
 
@@ -167,7 +175,7 @@ def test_determine_collection_with_unregistered_child():
     parent = PLEXOSGenerator(name="test-gen", object_id=1)
     child = UnregisteredChild()
 
-    collection_enum = PLEXOSComponentRegistry.determine_collection(parent, child)
+    collection_enum = PLEXOSComponentRegistry.determine_collection(parent, child)  # ty: ignore[invalid-argument-type]
     assert collection_enum is None
 
 
@@ -218,6 +226,7 @@ def test_system_collections_auto_registered():
         (ClassEnum.Battery, CollectionEnum.Batteries),
         (ClassEnum.Region, CollectionEnum.Regions),
         (ClassEnum.Node, CollectionEnum.Nodes),
+        (ClassEnum.Purchaser, CollectionEnum.Purchasers),
         (ClassEnum.Line, CollectionEnum.Lines),
     ]
 
@@ -257,7 +266,7 @@ def test_registry_isolation():
     class TestComponent:
         pass
 
-    PLEXOSComponentRegistry.register_component(TestComponent, ClassEnum.Generator)
+    PLEXOSComponentRegistry.register_component(TestComponent, ClassEnum.Generator)  # ty: ignore[invalid-argument-type]
 
     # Verify it increased
     assert len(PLEXOSComponentRegistry._class_registry) >= initial_class_count

@@ -2,8 +2,10 @@
 
 import calendar
 import difflib
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Any
 
 from loguru import logger
@@ -71,11 +73,11 @@ class SimulationConfig:
 
     models: list[PLEXOSModel]
     horizons: list[PLEXOSHorizon]
-    memberships: list[tuple[str, str, str]]  # (model_name, child_name, membership_type) triples
-    simulation_configs: dict[str, PLEXOSConfiguration | None] | None = None
+    memberships: Sequence[tuple[str, str, str]]  # (model_name, child_name, membership_type) triples
+    simulation_configs: Mapping[str, PLEXOSConfiguration | None] | None = None
 
 
-def get_enum_from_string(string: str, enum_class, prefix: str | None = None):
+def get_enum_from_string(string: str, enum_class: type[Enum], prefix: str | None = None) -> Any:
     """
     Find the closest matching enum member for a given string.
 
@@ -115,7 +117,7 @@ def get_enum_from_string(string: str, enum_class, prefix: str | None = None):
     # We lower to do a caseinsensitive mapping.
     requested_string = (prefix + string).lower()
     for enum_member in enum_class:
-        enum_member_string = enum_member.lower()
+        enum_member_string = enum_member.name.lower()
         similarity = difflib.SequenceMatcher(None, requested_string, enum_member_string).ratio()
         if similarity > max_similarity:
             max_similarity = similarity
@@ -446,7 +448,7 @@ def _rewrite_horizon_attributes_for_weather_year(
 
 def _build_from_static_models(
     defaults: dict[str, Any],
-    simulation_config: dict[str, PLEXOSConfiguration | None] | None = None,
+    simulation_config: Mapping[str, PLEXOSConfiguration | None] | None = None,
     weather_year: int | None = None,
 ) -> Result[SimulationConfig, str]:
     """
@@ -538,7 +540,7 @@ def _build_from_static_models(
 def build_plexos_simulation(
     config: dict[str, Any],
     defaults: dict[str, Any] | None = None,
-    simulation_config: dict[str, PLEXOSConfiguration | None] | None = None,
+    simulation_config: Mapping[str, PLEXOSConfiguration | None] | None = None,
 ) -> Result[SimulationConfig, str]:
     """
     Build PLEXOS simulation configuration from user config.
@@ -647,7 +649,7 @@ def build_plexos_simulation(
                 models=build_result.models,
                 horizons=build_result.horizons,
                 memberships=build_result.memberships,
-                simulation_configs=dict(simulation_config),
+                simulation_configs=simulation_config,
             )
         )
 
@@ -766,7 +768,7 @@ def _build_monthly_models(
             "periods_per_day": 24,
         }
         horizon_data.update(horizon_properties)
-        horizon = PLEXOSHorizon(**horizon_data)
+        horizon = PLEXOSHorizon(**horizon_data)  # ty: ignore[invalid-argument-type]
         horizons.append(horizon)
 
         model_name = f"Model_{horizon_year}_M{month:02d}"
@@ -775,7 +777,7 @@ def _build_monthly_models(
             "category": f"model_{horizon_year}",
         }
         model_data.update(model_properties)
-        model = PLEXOSModel(**model_data)
+        model = PLEXOSModel(**model_data)  # ty: ignore[invalid-argument-type]
         models.append(model)
 
         # Track membership with type
@@ -853,7 +855,7 @@ def _build_weekly_models(
             "periods_per_day": 24,
         }
         horizon_data.update(horizon_properties)
-        horizon = PLEXOSHorizon(**horizon_data)
+        horizon = PLEXOSHorizon(**horizon_data)  # ty: ignore[invalid-argument-type]
         horizons.append(horizon)
 
         model_name = f"Model_{horizon_year}_W{week:02d}"
@@ -862,7 +864,7 @@ def _build_weekly_models(
             "category": f"model_{horizon_year}",
         }
         model_data.update(model_properties)
-        model = PLEXOSModel(**model_data)
+        model = PLEXOSModel(**model_data)  # ty: ignore[invalid-argument-type]
         models.append(model)
 
         memberships.append((model_name, horizon_name, "Horizon"))
@@ -943,7 +945,7 @@ def _build_quarterly_models(
             "periods_per_day": 24,
         }
         horizon_data.update(horizon_properties)
-        horizon = PLEXOSHorizon(**horizon_data)
+        horizon = PLEXOSHorizon(**horizon_data)  # ty: ignore[invalid-argument-type]
         horizons.append(horizon)
 
         model_name = f"Model_{horizon_year}_{quarter_name}"
@@ -952,7 +954,7 @@ def _build_quarterly_models(
             "category": f"model_{horizon_year}",
         }
         model_data.update(model_properties)
-        model = PLEXOSModel(**model_data)
+        model = PLEXOSModel(**model_data)  # ty: ignore[invalid-argument-type]
         models.append(model)
 
         memberships.append((model_name, horizon_name, "Horizon"))

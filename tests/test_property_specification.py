@@ -40,7 +40,7 @@ def test_property_spec_dict_with_scenarios():
         ],
         units="MW",
     )
-    model = SimpleModel(value=prop)
+    model = SimpleModel(value=prop)  # ty: ignore[invalid-argument-type]
     assert isinstance(model.value, PLEXOSPropertyValue)
     assert model.value.units == "MW"
     assert model.value.get_scenarios() == ["Base", "High"]
@@ -55,7 +55,7 @@ def test_property_spec_dict_with_timeslices():
         ],
         units="MW",
     )
-    model = SimpleModel(value=prop)
+    model = SimpleModel(value=prop)  # ty: ignore[invalid-argument-type]
     assert isinstance(model.value, PLEXOSPropertyValue)
     assert model.value.units == "MW"
     assert model.value.get_timeslices() == ["OffPeak", "Peak"]
@@ -69,23 +69,23 @@ def test_property_spec_dict_with_bands():
             {"band": 2, "value": 50},
         ]
     )
-    model = SimpleModel(value=prop)
+    model = SimpleModel(value=prop)  # ty: ignore[invalid-argument-type]
     assert isinstance(model.value, PLEXOSPropertyValue)
     assert model.value.get_bands() == [1, 2]
 
 
 def test_property_spec_units_injection():
-    model = SimpleModel(value={"scenario": "Base", "value": 100})
-    assert model.value.units == "MW"
+    model = SimpleModel(value={"scenario": "Base", "value": 100})  # ty: ignore[invalid-argument-type]
+    assert model.value.units == "MW"  # ty: ignore[unresolved-attribute]
 
 
 def test_property_spec_units_not_overridden():
-    model = SimpleModel(value={"scenario": "Base", "value": 100, "units": "kW"})
-    assert model.value.units == "kW"
+    model = SimpleModel(value={"scenario": "Base", "value": 100, "units": "kW"})  # ty: ignore[invalid-argument-type]
+    assert model.value.units == "kW"  # ty: ignore[unresolved-attribute]
 
 
 def test_property_spec_no_bands_allows_single_band():
-    model = BandedModel(allowed=100.0, no_bands={"scenario": "Base", "value": 2.5})
+    model = BandedModel(allowed=100.0, no_bands={"scenario": "Base", "value": 2.5})  # ty: ignore[invalid-argument-type]
     assert isinstance(model.no_bands, PLEXOSPropertyValue)
 
 
@@ -98,25 +98,25 @@ def test_property_spec_no_bands_rejects_multi_band():
         ]
     )
     with pytest.raises(ValidationError):
-        BandedModel(allowed=100.0, no_bands=prop)
+        BandedModel(allowed=100.0, no_bands=prop)  # ty: ignore[invalid-argument-type]
 
 
 def test_property_spec_plexos_property_input():
     prop = PLEXOSPropertyValue.from_records([{"scenario": "Base", "value": 100}], units="kW")
-    model = SimpleModel(value=prop)
+    model = SimpleModel(value=prop)  # ty: ignore[invalid-argument-type]
     assert isinstance(model.value, PLEXOSPropertyValue)
     assert model.value.units == "kW"
 
 
 def test_property_spec_plexos_property_units_injection():
     prop = PLEXOSPropertyValue.from_records([{"scenario": "Base", "value": 100}])
-    model = SimpleModel(value=prop)
-    assert model.value.units == "MW"
+    model = SimpleModel(value=prop)  # ty: ignore[invalid-argument-type]
+    assert model.value.units == "MW"  # ty: ignore[unresolved-attribute]
 
 
 def test_property_spec_invalid_type():
     with pytest.raises(ValidationError):
-        SimpleModel(value="not a number")
+        SimpleModel(value="not a number")  # ty: ignore[invalid-argument-type]
 
 
 def test_get_filepath_and_references():

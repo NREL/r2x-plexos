@@ -68,7 +68,7 @@ class PLEXOSConfig(PluginConfig):
 
     fpath: Annotated[
         str | None, Field(description="Path to the PLEXOS run directory or XML file", default=None)
-    ]
+    ] = None
     model_name: Annotated[
         str,
         Field(description="Name of the PLEXOS model.", default="default"),
@@ -79,10 +79,10 @@ class PLEXOSConfig(PluginConfig):
             description="Optional subdirectory containing time series files. If passed it must exist.",
             default=None,
         ),
-    ]
-    horizon_year: Annotated[int | None, Field(description="Horizon year", default=None)]
-    weather_year: Annotated[int | None, Field(description="Weather year", default=None)]
-    output_path: Annotated[str | None, Field(description="Alias for output directory", default=None)]
+    ] = None
+    horizon_year: Annotated[int | None, Field(description="Horizon year", default=None)] = None
+    weather_year: Annotated[int | None, Field(description="Weather year", default=None)] = None
+    output_path: Annotated[str | None, Field(description="Alias for output directory", default=None)] = None
     template: Annotated[
         str | None,
         Field(
@@ -110,25 +110,25 @@ class PLEXOSConfig(PluginConfig):
         """Load default configuration from defaults.json."""
         config_path = Path(__file__).parent / "config" / "defaults.json"
         with open(config_path) as f:
-            return json.load(f)
+            return dict(json.load(f))
 
     @classmethod
     def load_static_models(cls) -> dict[str, Any]:
         """Load static models and horizons from JSON."""
         config_path = Path(__file__).parent / "config" / "plexos_models.json"
         with open(config_path) as f:
-            return json.load(f)
+            return dict(json.load(f))
 
     @classmethod
     def load_static_horizons(cls) -> dict[str, Any]:
         """Load static horizons from JSON."""
         config_path = Path(__file__).parent / "config" / "plexos_horizons.json"
         with open(config_path) as f:
-            return json.load(f)
+            return dict(json.load(f))
 
     @classmethod
     def load_reports(cls) -> list[dict[str, Any]]:
         """Load report definitions from plexos_reports.json."""
         config_path = Path(__file__).parent / "config" / "plexos_reports.json"
         with open(config_path) as f:
-            return json.load(f)
+            return list(json.load(f))

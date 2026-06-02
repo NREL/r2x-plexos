@@ -185,6 +185,7 @@ def resolve_horizon_for_model(db: PlexosDB, model_name: str) -> tuple[datetime, 
     if not date_from and not date_to:
         return None
 
+    assert date_from is not None
     date_from = ole_date_to_datetime(date_from)
     date_to = ole_date_to_datetime(date_to) if date_to else None
     step_type = int(step_type) if step_type is not None else 1

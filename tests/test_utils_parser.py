@@ -20,7 +20,7 @@ def sample_ts():
     """Reusable time series for action tests."""
     data = [1.0, 2.0, 3.0, 4.0, 5.0]
     initial_time = datetime(2024, 1, 1)
-    return SingleTimeSeries.from_array(data, "test_ts", initial_time, resolution=3600)
+    return SingleTimeSeries.from_array(data, "test_ts", initial_time, resolution=timedelta(seconds=3600))
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def trim_ts():
     """Time series trimmed for horizon tests."""
     data = [1.0, 2.0, 3.0]
     initial_time = datetime(2024, 1, 1)
-    return SingleTimeSeries.from_array(data, "trim_ts", initial_time, resolution=3600)
+    return SingleTimeSeries.from_array(data, "trim_ts", initial_time, resolution=timedelta(seconds=3600))
 
 
 def test_to_snake_case_basic():

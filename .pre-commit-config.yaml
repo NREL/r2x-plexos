@@ -21,11 +21,12 @@ repos:
         language: system
         types_or: [python, pyi]
 
-      - id: ty-check
-        name: ty check
-        entry: uv run ty check src/
+      - id: mypy-check
+        name: mypy check
+        entry: uv run mypy src/
         language: system
         types_or: [python, pyi]
+        pass_filenames: false
 
 
   - repo: builtin

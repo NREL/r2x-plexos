@@ -1,6 +1,7 @@
 """Test variable resolution with constant values."""
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 from plexosdb import ClassEnum, CollectionEnum, PlexosDB
@@ -72,11 +73,12 @@ def test_battery_capacity_with_constant_variable(xml_with_variables, tmp_path, c
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     sys = result.system
+    assert sys is not None
 
     region = sys.get_component(PLEXOSRegion, "Region")
 

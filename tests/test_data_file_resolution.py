@@ -1,6 +1,8 @@
 """Test variable resolution with constant values."""
 
-from r2x_core import DataStore, PluginContext, System
+from typing import cast
+
+from r2x_core import DataStore, PluginContext
 from r2x_plexos.models import PLEXOSRegion
 from r2x_plexos.models.datafile import PLEXOSDatafile
 from r2x_plexos.parser import PLEXOSParser
@@ -13,18 +15,22 @@ def test_multi_band_datafile(tmp_path, db_with_multiband_variable, caplog):
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
-    sys: System = result.system
+    sys = result.system
+    assert sys is not None
 
     # Variable inspection
     variable_component = sys.get_component(PLEXOSDatafile, "LoadProfiles")
     prop_value = variable_component.get_property_value("filename")
 
-    assert prop_value.get_entry().scenario_name == "scenario_2"
-    assert "Load_" in prop_value.get_entry().text
+    entry = prop_value.get_entry()
+    assert entry is not None
+    assert entry.scenario_name == "scenario_2"
+    assert entry.text is not None
+    assert "Load_" in entry.text
     assert prop_value.has_datafile()
     assert prop_value.has_scenarios()
 
@@ -38,6 +44,6 @@ def test_multi_band_datafile(tmp_path, db_with_multiband_variable, caplog):
         assert sys.has_time_series(region_component)
         assert len(sys.list_time_series(region_component)) == 3
 
-        band_1_ts = sys.get_time_series(region_component, band=1)
+        band_1_ts = sys.get_time_series(region_component, band="1")
         assert len(band_1_ts.data) == 8784
         assert all(val != 0 for val in band_1_ts.data[:24])

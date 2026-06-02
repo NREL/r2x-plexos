@@ -21,7 +21,7 @@ def test_serialize_component_complex():
     heat_rate_with_bands.add_entry(value=12, band=2)
     heat_rate_with_bands.add_entry(value=14, band=3)
 
-    component = PLEXOSGenerator(name="Test", heat_rate=heat_rate_with_bands)
+    component = PLEXOSGenerator(name="Test", heat_rate=heat_rate_with_bands)  # ty: ignore[invalid-argument-type]
 
     result = component.model_dump()
     assert result
@@ -36,7 +36,7 @@ def test_serialize_round_trip():
     original_prop.add_entry(value=12, band=2)
     original_prop.add_entry(value=14, band=3)
 
-    component = PLEXOSGenerator(name="Test", heat_rate=original_prop)
+    component = PLEXOSGenerator(name="Test", heat_rate=original_prop)  # ty: ignore[invalid-argument-type]
 
     # Serialize
     serialized = component.model_dump(mode="json")
@@ -74,7 +74,7 @@ def test_property_value_serialization_format():
         action="=",
     )
 
-    component = PLEXOSGenerator(name="Test", max_capacity=prop)
+    component = PLEXOSGenerator(name="Test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
     serialized = component.model_dump(mode="json")
 
     max_cap_serialized = serialized["max_capacity"]
@@ -110,7 +110,7 @@ def test_serialize_property_with_scenarios():
     prop.add_entry(value=120, scenario="High", band=1)
     prop.add_entry(value=80, scenario="Low", band=1)
 
-    component = PLEXOSGenerator(name="Test", max_capacity=prop)
+    component = PLEXOSGenerator(name="Test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
     serialized = component.model_dump(mode="json")
 
     max_cap_serialized = serialized["max_capacity"]
@@ -136,7 +136,7 @@ def test_serialize_property_with_datafile():
         band=1,
     )
 
-    component = PLEXOSGenerator(name="Test", heat_rate=prop)
+    component = PLEXOSGenerator(name="Test", heat_rate=prop)  # ty: ignore[invalid-argument-type]
     serialized = component.model_dump(mode="json")
 
     heat_rate_serialized = serialized["heat_rate"]
@@ -159,7 +159,7 @@ def test_serialize_property_with_variable():
         band=1,
     )
 
-    component = PLEXOSGenerator(name="Test", heat_rate=prop)
+    component = PLEXOSGenerator(name="Test", heat_rate=prop)  # ty: ignore[invalid-argument-type]
     serialized = component.model_dump(mode="json")
 
     heat_rate_serialized = serialized["heat_rate"]
@@ -181,7 +181,7 @@ def test_serialize_property_with_text():
         band=1,
     )
 
-    component = PLEXOSGenerator(name="Test", heat_rate=prop)
+    component = PLEXOSGenerator(name="Test", heat_rate=prop)  # ty: ignore[invalid-argument-type]
     serialized = component.model_dump(mode="json")
 
     heat_rate_serialized = serialized["heat_rate"]
@@ -200,7 +200,7 @@ def test_deserialize_component():
     original_prop.add_entry(value=12, band=2)
     original_prop.add_entry(value=14, band=3)
 
-    original = PLEXOSGenerator(name="TestGen", heat_rate=original_prop)
+    original = PLEXOSGenerator(name="TestGen", heat_rate=original_prop)  # ty: ignore[invalid-argument-type]
     serialized = original.model_dump(mode="json")
 
     # Deserialize
@@ -232,7 +232,7 @@ def test_deserialize_component_with_scenarios():
     original_prop.add_entry(value=120, scenario="High", band=1)
     original_prop.add_entry(value=80, scenario="Low", band=1)
 
-    original = PLEXOSGenerator(name="TestGen", max_capacity=original_prop)
+    original = PLEXOSGenerator(name="TestGen", max_capacity=original_prop)  # ty: ignore[invalid-argument-type]
     serialized = original.model_dump(mode="json")
 
     # Deserialize
@@ -273,7 +273,7 @@ def test_deserialize_component_with_metadata():
         text_class_name="Data File",
     )
 
-    original = PLEXOSGenerator(name="TestGen", max_capacity=original_prop)
+    original = PLEXOSGenerator(name="TestGen", max_capacity=original_prop)  # ty: ignore[invalid-argument-type]
     serialized = original.model_dump(mode="json")
 
     # Deserialize
@@ -315,12 +315,12 @@ def test_system_serialization(tmp_path):
     gen1_prop = PLEXOSPropertyValue()
     gen1_prop.add_entry(value=100, band=1)
     gen1_prop.add_entry(value=120, band=2)
-    gen1 = PLEXOSGenerator(name="Gen1", max_capacity=gen1_prop)
+    gen1 = PLEXOSGenerator(name="Gen1", max_capacity=gen1_prop)  # ty: ignore[invalid-argument-type]
 
     gen2_prop = PLEXOSPropertyValue()
     gen2_prop.add_entry(value=50, scenario="Base", band=1)
     gen2_prop.add_entry(value=60, scenario="High", band=1)
-    gen2 = PLEXOSGenerator(name="Gen2", max_capacity=gen2_prop)
+    gen2 = PLEXOSGenerator(name="Gen2", max_capacity=gen2_prop)  # ty: ignore[invalid-argument-type]
 
     # Add to system
     system.add_component(gen1)
@@ -384,7 +384,7 @@ def test_system_serialization_complex_properties(tmp_path):
         action="=",
     )
 
-    gen = PLEXOSGenerator(name="ComplexGen", max_capacity=prop)
+    gen = PLEXOSGenerator(name="ComplexGen", max_capacity=prop)  # ty: ignore[invalid-argument-type]
     system.add_component(gen)
 
     # Serialize and deserialize

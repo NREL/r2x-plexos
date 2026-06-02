@@ -297,7 +297,7 @@ def db_with_multiband_variable(db_base: PlexosDB, multi_year_data_file):
         )
 
     regions = ["r1", "r2"]
-    db.add_objects(ClassEnum.Region, regions, category="Regions")
+    db.add_objects(ClassEnum.Region, *regions, category="Regions")
     for region in regions:
         region_prop_id = db.add_property(ClassEnum.Region, region, "Load", 0.0, band=1)
         db._db.execute(

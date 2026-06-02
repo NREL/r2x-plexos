@@ -20,7 +20,7 @@ class AliasModel(BaseModel):
 
 
 def test_property_value_custom_schema_validate_and_serialize() -> None:
-    model = PropertyValueModel(prop=[{"value": 5.0, "scenario_name": "Base", "band": 1}])
+    model = PropertyValueModel(prop=[{"value": 5.0, "scenario_name": "Base", "band": 1}])  # ty: ignore[invalid-argument-type]
     assert isinstance(model.prop, PLEXOSPropertyValue)
     assert model.prop.get_value() == 5.0
 
@@ -41,7 +41,7 @@ def test_property_value_custom_schema_legacy_entries_dict() -> None:
         },
         "units": "MW",
     }
-    model = PropertyValueModel(prop=payload)
+    model = PropertyValueModel(prop=payload)  # ty: ignore[invalid-argument-type]
     assert isinstance(model.prop, PLEXOSPropertyValue)
     assert model.prop.units == "MW"
     assert model.prop.get_value() == 7.0
@@ -49,7 +49,7 @@ def test_property_value_custom_schema_legacy_entries_dict() -> None:
 
 def test_property_value_custom_schema_invalid_type() -> None:
     with pytest.raises(ValidationError):
-        PropertyValueModel(prop="bad-type")
+        PropertyValueModel(prop="bad-type")  # ty: ignore[invalid-argument-type]
 
 
 def test_property_value_priority_and_horizon_resolution() -> None:
@@ -138,8 +138,8 @@ def test_property_specification_private_paths() -> None:
     assert isinstance(serialized, list)
     assert serialized[0]["value"] == 2
 
-    assert spec._validate_value(None, info=None) is None
-    schema = PropertySpecification.__get_pydantic_json_schema__(None, handler=None)  # type: ignore[arg-type]
+    assert spec._validate_value(None, info=None) is None  # ty: ignore[invalid-argument-type]
+    schema = PropertySpecification.__get_pydantic_json_schema__(None, handler=None)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
     assert schema == {"oneOf": [{"type": "number"}, {"type": "object"}]}
 
 

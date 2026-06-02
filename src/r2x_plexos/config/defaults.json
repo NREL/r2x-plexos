@@ -144,6 +144,10 @@
     "PLEXOSTransformer": [
       "units"
     ],
+    "PLEXOSPurchaser": [
+      "units",
+      "fixed_load"
+    ],
     "PLEXOSNode": [
       "units"
     ],

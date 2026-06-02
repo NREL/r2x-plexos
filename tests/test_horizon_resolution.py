@@ -3,11 +3,13 @@
 import datetime
 import random
 from pathlib import Path
+from typing import cast
 
 import pytest
+from infrasys import SingleTimeSeries
 from plexosdb import ClassEnum, CollectionEnum, PlexosDB
 
-from r2x_core import DataFile, DataStore, PluginContext, System
+from r2x_core import DataFile, DataStore, PluginContext
 from r2x_plexos.models import PLEXOSRegion
 from r2x_plexos.models.datafile import PLEXOSDatafile
 from r2x_plexos.parser import PLEXOSParser
@@ -19,7 +21,7 @@ def daterange(start_date, end_date):
         yield start_date + datetime.timedelta(n)
 
 
-def datetime_to_ole_date(dt: datetime) -> float:
+def datetime_to_ole_date(dt: datetime.datetime) -> float:
     """
     Converts a Python datetime object to an OLE Automation Date (float).
 
@@ -122,18 +124,22 @@ def test_multi_band_datafile(tmp_path, xml_with_multi_weather_chrono, caplog):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
-    sys: System = result.system
+    sys = result.system
+    assert sys is not None
 
     # Variable inspection
     variable_component = sys.get_component(PLEXOSDatafile, "LoadProfiles")
     prop_value = variable_component.get_property_value("filename")
 
-    assert prop_value.get_entry().scenario_name == "scenario_2"
-    assert "year_daily_hour" in prop_value.get_entry().text
+    entry = prop_value.get_entry()
+    assert entry is not None
+    assert entry.scenario_name == "scenario_2"
+    assert entry.text is not None
+    assert "year_daily_hour" in entry.text
     assert prop_value.has_datafile()
     assert prop_value.has_scenarios()
 
@@ -150,5 +156,6 @@ def test_multi_band_datafile(tmp_path, xml_with_multi_weather_chrono, caplog):
 
         ts_list = sys.list_time_series(region_component)
         ts = ts_list[0]
+        assert isinstance(ts, SingleTimeSeries)
         assert len(ts.data) == 120  # 5 days from the chronology
         assert all(val != 0 for val in ts.data[:120])  # Check first 5 days hours are non-zero

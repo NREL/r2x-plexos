@@ -1,3 +1,5 @@
+from typing import cast
+
 import pytest
 from plexosdb import ClassEnum
 
@@ -31,7 +33,7 @@ def parser_instance(config_store_example) -> PLEXOSParser:
     """Shared parser instance for read-only tests."""
     config, store = config_store_example
     ctx = PluginContext(config=config, store=store)
-    return PLEXOSParser.from_context(ctx)
+    return cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
 
 
 @pytest.fixture(scope="module")
@@ -92,11 +94,12 @@ def test_collection_properties_basic(db_with_reserve_collection_property, tmp_pa
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     reserve = system.get_component(PLEXOSReserve, "TestReserve")
     assert reserve is not None
@@ -131,11 +134,12 @@ def test_collection_properties_with_timeseries(db_with_reserve_collection_proper
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     reserve = system.get_component(PLEXOSReserve, "TestReserve")
     assert reserve is not None
@@ -177,11 +181,12 @@ def test_property_with_bands_kept_as_property_value(db_thermal_gen_multiband, tm
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     gen = system.get_component(PLEXOSGenerator, "thermal-01")
 
@@ -207,11 +212,12 @@ def test_simple_numeric_property_extracted_as_value(db_thermal_gen_multiband, tm
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     gen = system.get_component(PLEXOSGenerator, "thermal-01")
 
@@ -227,11 +233,12 @@ def test_region_load_with_variable_reference(db_with_multiband_variable, tmp_pat
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     sys = result.system
+    assert sys is not None
 
     region = sys.get_component(PLEXOSRegion, "r1")
 
@@ -248,11 +255,12 @@ def test_datafile_component_not_registered_for_timeseries(db_with_multiband_vari
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     sys = result.system
+    assert sys is not None
 
     datafile = sys.get_component(PLEXOSDatafile, "LoadProfiles")
     assert datafile is not None
@@ -268,11 +276,12 @@ def test_variable_component_not_registered_for_timeseries(db_with_multiband_vari
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     sys = result.system
+    assert sys is not None
 
     # Get all variables
     variables = list(sys.get_components(PLEXOSVariable))
@@ -297,7 +306,7 @@ def test_failed_references_tracking(db_with_multiband_variable, tmp_path, caplog
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     _ = parser.run()
@@ -319,7 +328,7 @@ def test_parser_with_horizon_year(db_thermal_gen_multiband, tmp_path):
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -341,11 +350,12 @@ def test_parser_component_cache_population(db_thermal_gen_multiband, tmp_path):
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     # Component cache should be populated
     assert len(parser._component_cache) > 0
@@ -369,7 +379,7 @@ def test_parser_membership_cache(db_with_topology, tmp_path):
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     _ = parser.run()
@@ -399,7 +409,7 @@ def test_parser_handles_unsupported_component_type(db_base, tmp_path, caplog):
 
     with caplog.at_level(loguru.logger.level("DEBUG").no):
         ctx = PluginContext(config=config, store=store)
-        parser = PLEXOSParser.from_context(ctx)
+        parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
         parser.db = db
         result = parser.run()
         system = result.system
@@ -420,7 +430,7 @@ def test_parser_scenario_priority_setting(db_with_scenarios, tmp_path):
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -437,7 +447,7 @@ def test_parser_timeseries_cache_reuse(db_with_multiband_variable, tmp_path):
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     _ = parser.run()
@@ -458,11 +468,12 @@ def test_parser_with_custom_name(db_thermal_gen_multiband, tmp_path):
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     # Note: System name comes from on_build(), which uses "PLEXOS" by default
     assert system.name == "PLEXOS"
@@ -480,7 +491,7 @@ def test_parser_skip_validation_flag(db_thermal_gen_multiband, tmp_path):
     store.add_data([data_file])
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -504,7 +515,7 @@ def test_parser_property_without_field_name_skipped(db_thermal_gen_multiband, tm
 
     with caplog.at_level(loguru.logger.level("WARNING").no):
         ctx = PluginContext(config=config, store=store)
-        parser = PLEXOSParser.from_context(ctx)
+        parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
         parser.db = db
         result = parser.run()
         system = result.system
@@ -519,7 +530,7 @@ def test_parser_build_without_db(tmp_path):
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     # Don't set parser.db
 
     result = parser.on_build()
@@ -549,7 +560,7 @@ def test_parser_validate_inputs_missing_model(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.validate_inputs()
@@ -575,7 +586,7 @@ def test_parser_error_handling_in_component_creation(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     with pytest.raises(PluginError, match="validation error"):
@@ -610,7 +621,7 @@ def test_parser_collection_property_without_parent(db_with_reserve_collection_pr
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -635,7 +646,7 @@ def test_parser_time_series_with_invalid_datafile_path(db_with_multiband_variabl
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -662,7 +673,7 @@ def test_parser_membership_with_invalid_collection(db_with_topology, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -698,11 +709,12 @@ def test_parser_property_with_multiple_scenarios(db_with_scenarios, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     region = system.get_component(PLEXOSRegion, region_name)
     assert region is not None
@@ -734,7 +746,7 @@ def test_parser_datafile_with_no_filename_property(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -762,11 +774,12 @@ def test_parser_variable_with_no_profile(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     var = system.get_component(PLEXOSVariable, "EmptyVariable")
     assert var is not None
@@ -791,11 +804,12 @@ def test_parser_property_with_text_and_value(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     gen = system.get_component(PLEXOSGenerator, gen_name)
     assert gen is not None
@@ -812,7 +826,7 @@ def test_parser_time_series_attachment_failure_tracked(db_with_multiband_variabl
 
     with caplog.at_level(loguru.logger.level("DEBUG").no):
         ctx = PluginContext(config=config, store=store)
-        parser = PLEXOSParser.from_context(ctx)
+        parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
         parser.db = db
 
         result = parser.run()
@@ -839,11 +853,12 @@ def test_parser_component_with_category(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     gen = system.get_component(PLEXOSGenerator, gen_name)
     assert gen is not None
@@ -862,7 +877,7 @@ def test_parser_postprocess_system_success(db_thermal_gen_multiband, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -879,7 +894,7 @@ def test_parser_build_time_series_error_handling(db_with_multiband_variable, tmp
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     # Mock to simulate error in time series building
@@ -914,11 +929,12 @@ def test_parser_property_value_extraction_edge_cases(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     gen = system.get_component(PLEXOSGenerator, gen_name)
     assert gen is not None
@@ -940,7 +956,7 @@ def test_validate_inputs_no_horizon(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     # This should trigger horizon validation
@@ -966,7 +982,7 @@ def test_build_components_with_unknown_class(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -993,7 +1009,7 @@ def test_property_without_object_reference(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -1030,7 +1046,7 @@ def test_datafile_without_filename_tag(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -1061,7 +1077,7 @@ def test_variable_without_profile_tag(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -1083,7 +1099,7 @@ def test_time_series_with_missing_resolution(db_with_multiband_variable, tmp_pat
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -1119,11 +1135,12 @@ def test_property_with_action_type_multiply(db_base, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     system = result.system
+    assert system is not None
 
     gen = system.get_component(PLEXOSGenerator, gen_name)
     assert gen is not None
@@ -1170,7 +1187,7 @@ def test_collection_property_with_pattern(db_with_reserve_collection_property, t
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -1195,7 +1212,7 @@ def test_membership_without_child_object(db_with_topology, tmp_path):
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
@@ -1210,7 +1227,7 @@ def test_postprocess_with_timeseries_metadata_issues(db_with_multiband_variable,
     store = DataStore(path=tmp_path)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()

@@ -1,6 +1,7 @@
 """Test variable resolution with constant values."""
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 from plexosdb import ClassEnum, CollectionEnum, PlexosDB
@@ -90,11 +91,12 @@ def test_battery_capacity_with_constant_variable(xml_with_variables, tmp_path, c
     store.add_data([data_file], overwrite=True)
 
     ctx = PluginContext(config=config, store=store)
-    parser = PLEXOSParser.from_context(ctx)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
     parser.db = db
 
     result = parser.run()
     sys = result.system
+    assert sys is not None
 
     battery_component = sys.get_component(PLEXOSBattery, "TestBattery")
     datafile_component = sys.get_component(PLEXOSDatafile, "BatteryCapacities")
@@ -105,13 +107,17 @@ def test_battery_capacity_with_constant_variable(xml_with_variables, tmp_path, c
 
     max_power_property_value = battery_component.get_property_value("max_power")
     assert isinstance(max_power_property_value, PLEXOSPropertyValue)
-    assert max_power_property_value.get_entry().datafile_name == datafile_component.name
+    max_power_entry = max_power_property_value.get_entry()
+    assert max_power_entry is not None
+    assert max_power_entry.datafile_name == datafile_component.name
     assert max_power_property_value.has_datafile()
     assert battery_component.max_soc == 99.9
 
     capacity_property_value = battery_component.get_property_value("capacity")
     assert isinstance(capacity_property_value, PLEXOSPropertyValue)
-    assert capacity_property_value.get_entry().variable_name == variable_component.name
+    capacity_entry = capacity_property_value.get_entry()
+    assert capacity_entry is not None
+    assert capacity_entry.variable_name == variable_component.name
     assert capacity_property_value.has_variable()
     assert battery_component.charge_efficiency == 70
     assert not sys.has_time_series(battery_component)

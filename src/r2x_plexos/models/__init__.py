@@ -23,6 +23,7 @@ from .model import PLEXOSHorizon, PLEXOSModel
 from .node import PLEXOSNode
 from .property import PLEXOSPropertyValue
 from .property_specification import PLEXOSProperty, PropertySpecification
+from .purchaser import PLEXOSPurchaser
 from .region import PLEXOSRegion
 from .registry import PLEXOSComponentRegistry
 from .reserve import PLEXOSReserve
@@ -65,6 +66,7 @@ __all__ = [
     "PLEXOSProduction",
     "PLEXOSProperty",
     "PLEXOSPropertyValue",
+    "PLEXOSPurchaser",
     "PLEXOSRegion",
     "PLEXOSReport",
     "PLEXOSReserve",

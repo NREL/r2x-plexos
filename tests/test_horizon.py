@@ -13,7 +13,7 @@ def test_horizon_filters_by_date_range():
             {"date_from": "2024-07-01", "date_to": "2024-12-31", "value": 20.0},
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     assert gen.max_capacity == 10.0
 
@@ -35,7 +35,7 @@ def test_horizon_includes_entries_without_dates():
             {"date_from": "2024-07-01", "date_to": "2024-12-31", "value": 20.0},
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     assert gen.max_capacity == 5.0
 
@@ -54,7 +54,7 @@ def test_horizon_with_scenarios_no_priority():
             {"scenario": "s2", "date_from": "2024-01-01", "date_to": "2024-12-31", "value": 20.0},
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     assert gen.max_capacity == {"s1": 10.0, "s2": 20.0}
 
@@ -73,7 +73,7 @@ def test_horizon_with_timeslices():
             {"time_slice": "M2", "date_from": "2024-07-01", "date_to": "2024-12-31", "value": 20.0},
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     assert gen.max_capacity == {"M1": 10.0, "M2": 20.0}
 
@@ -96,7 +96,7 @@ def test_scenario_and_horizon_combined():
             {"scenario": "s3", "date_from": "2025-01-01", "date_to": "2025-12-31", "value": 30.0},
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     assert gen.max_capacity == {"s1": 10.0, "s2": 20.0, "s3": 30.0}
 
@@ -122,7 +122,7 @@ def test_horizon_partial_overlap():
             {"date_from": "2024-06-01", "date_to": "2024-12-31", "value": 20.0},
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     with horizon("2024-06-01", "2024-06-30"):
         assert gen.max_capacity == 10.0
@@ -142,7 +142,7 @@ def test_horizon_with_open_ended_dates():
             {"date_to": "2023-12-31", "value": 5.0},  # Open-ended start date
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     with horizon("2024-06-01", "2024-12-31"):
         assert gen.max_capacity == 10.0
@@ -162,7 +162,7 @@ def test_horizon_nested_context_managers():
             {"date_from": "2024-07-01", "date_to": "2024-12-31", "value": 20.0},
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     with horizon("2024-01-01", "2024-12-31"):
         assert gen.max_capacity == 10.0  # Both entries match, first returned
@@ -209,7 +209,7 @@ def test_horizon_with_scenarios_and_timeslices():
             },
         ]
     )
-    gen = PLEXOSGenerator(name="test", max_capacity=prop)
+    gen = PLEXOSGenerator(name="test", max_capacity=prop)  # ty: ignore[invalid-argument-type]
 
     with horizon("2024-01-01", "2024-06-30"):
         assert gen.max_capacity == {"s1": 10.0, "s2": 20.0}

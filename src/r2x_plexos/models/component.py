@@ -22,7 +22,7 @@ class PLEXOSObject(Component):
     model_config: ClassVar = {"protected_namespaces": ()}
     category: str | None = None
     object_id: int | None = None
-    ext: dict | None = None
+    ext: dict[str, Any] | None = None
 
     def __getattribute__(self, name: str) -> Any:
         """Override attribute access to auto-resolve PropertyValue fields.

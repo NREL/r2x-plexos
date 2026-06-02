@@ -1,12 +1,14 @@
 """Registry for PLEXOS components and their corresponding enums."""
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from infrasys.component import Component
 from plexosdb.enums import ClassEnum, CollectionEnum
 
+from ..enums_compat import PURCHASER_CLASS_ENUM, PURCHASER_COLLECTION_ENUM
 from .generator import PLEXOSGenerator
 from .node import PLEXOSNode
+from .purchaser import PLEXOSPurchaser
 
 
 class PLEXOSComponentRegistry:
@@ -53,12 +55,14 @@ class PLEXOSComponentRegistry:
         # Handle System as parent with the plural form pattern
         if parent_enum == ClassEnum.System:
             # Try to find a plural form of the child class name
-            child_name = child_enum.value
+            child_name = child_enum.value if hasattr(child_enum, "value") else str(child_enum)
             plural_name = f"{child_name}s"
 
             try:
                 return CollectionEnum[plural_name]
             except (KeyError, ValueError):
+                if plural_name == "Purchasers":
+                    return cast(CollectionEnum, PURCHASER_COLLECTION_ENUM)
                 # Handle special cases where plural isn't just adding 's'
                 special_plurals = {
                     "Storage": "Storages",
@@ -107,6 +111,18 @@ for child_enum in [
             child_enum,
             collection_enum,
         )
+
+PLEXOSComponentRegistry.register_component(PLEXOSPurchaser, cast(ClassEnum, PURCHASER_CLASS_ENUM))
+purchaser_collection = PLEXOSComponentRegistry.get_collection_enum(
+    ClassEnum.System,
+    cast(ClassEnum, PURCHASER_CLASS_ENUM),
+)
+if purchaser_collection is not None:
+    PLEXOSComponentRegistry.register_collection(
+        ClassEnum.System,
+        cast(ClassEnum, PURCHASER_CLASS_ENUM),
+        purchaser_collection,
+    )
 
 # Register other common parent-child relationships
 # For example:

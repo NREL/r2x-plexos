@@ -1,6 +1,8 @@
 """Export PLEXOS system to XML."""
 
 import os
+import sqlite3
+from datetime import datetime, timedelta
 from itertools import groupby
 from pathlib import Path
 from typing import Any, cast
@@ -54,6 +56,10 @@ XML_TEMPLATE_MAP = {
     "PLEXOS10.0": "master_10.0R2_btu.xml",
 }
 BATCH_SIZE = 500
+FLOW_CLIP_MEMO_TEXT = "Setting fixed value of ±99999 to flows greater/less than ±100000"
+# PLEXOS property aliases that are only meaningful for thermal/commit generators.
+# Source of truth lives on PLEXOSGenerator.THERMAL_ONLY_ALIASES — update it there.
+_THERMAL_ONLY_ALIASES: frozenset[str] = PLEXOSGenerator.THERMAL_ONLY_ALIASES
 
 
 class PLEXOSExporter(Plugin[PLEXOSConfig]):
@@ -76,6 +82,14 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         self.plexos_scenario: str = "default"
         self.db: PlexosDB | None = None
         self.defaults: dict[str, Any] = PLEXOSConfig.load_defaults()
+        # Reverse map built once from category-groups: normalised category → group name.
+        # Avoids rebuilding a temporary dict on every component property lookup.
+        _category_groups: dict[str, list[str]] = self.defaults.get("category-groups", {})
+        self._category_to_group: dict[str, str] = {
+            str(c).strip().lower().replace("_", "-"): grp
+            for grp, cats in _category_groups.items()
+            for c in cats
+        }
 
     def on_export(self) -> Result[None, str]:
         """Initialize the exporter after context is set.
@@ -319,13 +333,13 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             logger.debug(f"Adding {len(components)} {component_type.__name__} components")
 
             # Sort components by category to group them
-            components.sort(key=lambda x: x.category or "")  # type: ignore
+            components.sort(key=lambda x: x.category or "")
 
             # Fetch all existing objects of this class once to avoid duplicate inserts
             existing = set(self.db.list_objects_by_class(class_enum))
 
             # Group components by category and add each group in one call
-            for category, group in groupby(components, key=lambda x: x.category or ""):  # type: ignore
+            for category, group in groupby(components, key=lambda x: x.category or ""):
                 names = [comp.name for comp in group]
 
                 # Filter out names that already exist in the database
@@ -387,6 +401,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         logger.info("Adding component properties and memberships")
         self._add_component_properties(datafile_prefix=datafile_prefix)
         self._add_component_memberships()
+        self._resolve_db_consistency()
 
         xml_filename = self._build_xml_filename()
         xml_path = base_folder / xml_filename
@@ -403,26 +418,50 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         return Ok(None)
 
     def _deduplicate_property_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Remove duplicate property records before bulk insert."""
+        """Remove duplicate property records before bulk insert.
+
+        `plexosdb.add_properties_from_records` identifies rows by
+        `(name, property, value)` for scenario tagging. If this exporter emits
+        the same triple multiple times, scenario tag insertion can fail with
+        `UNIQUE constraint failed: t_tag.data_id, t_tag.object_id`.
+
+        To keep insertion idempotent and stable, collapse records by that key
+        while preserving the richest metadata encountered.
+        """
         if not records:
             return records
 
-        seen: dict[tuple[Any, ...], dict[str, Any]] = {}
+        def _normalize_value(value: Any) -> Any:
+            """Normalize property value for deduplication key."""
+            # PLEXOS warnings can be triggered by duplicate values written with
+            # different Python types (e.g. 23.3 vs "23.3"). Canonicalize these.
+            if isinstance(value, str):
+                stripped = value.strip()
+                if stripped == "":
+                    return ""
+                lowered = stripped.lower()
+                if lowered in {"true", "false"}:
+                    return lowered == "true"
+                try:
+                    return float(stripped)
+                except ValueError:
+                    return stripped
+            return value
+
+        seen: dict[tuple, dict[str, Any]] = {}
         for rec in records:
             key = (
-                rec.get("name"),
-                rec.get("property"),
-                rec.get("band", 1),
-                rec.get("timeslice"),
-                rec.get("date_from"),
-                rec.get("date_to"),
+                str(rec.get("name", "")).strip(),
+                str(rec.get("property", "")).strip(),
+                _normalize_value(rec.get("value")),
             )
             if key not in seen:
                 seen[key] = dict(rec)
             else:
                 current = seen[key]
-                if current.get("datafile_text") is None and rec.get("datafile_text") is not None:
-                    current["datafile_text"] = rec["datafile_text"]
+                for field in ("band", "timeslice", "date_from", "date_to", "datafile_text"):
+                    if rec.get(field) is not None:
+                        current[field] = rec[field]
 
         deduped = list(seen.values())
         dropped = len(records) - len(deduped)
@@ -430,36 +469,35 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             logger.debug("Dropped {} duplicate property rows before bulk insert", dropped)
         return deduped
 
+    def _get_category_group_name(self, comp: Any) -> str | None:
+        """Return the category-group name for a component, or None if unresolvable."""
+        category_groups = self.defaults.get("category-groups", {})
+        category = getattr(comp, "category", None)
+        if not category:
+            return None
+        cat = str(category).strip().lower().replace("_", "-")
+        alias_map = {
+            "thermal": "thermal-standard",
+            "renewable": "renewable-dispatch",
+            "storage": "energy-reservoir-storage",
+            "hydro": "hydro-dispatch",
+        }
+        cat = alias_map.get(cat, cat)
+        if cat in category_groups:
+            return cat
+        return self._category_to_group.get(cat)
+
     def _get_required_properties_for_component(self, comp: Any, type_name: str) -> set[str]:
         """Resolve required properties for a component using category-group aware lookup."""
         required_properties = self.defaults.get("required-properties", {})
-        category_groups = self.defaults.get("category-groups", {})
-        category = getattr(comp, "category", None)
-
-        if category:
-            category_norm = str(category).strip().lower().replace("_", "-")
-            alias_map = {
-                "thermal": "thermal-standard",
-                "renewable": "renewable-dispatch",
-                "storage": "energy-reservoir-storage",
-            }
-            category_norm = alias_map.get(category_norm, category_norm)
-
-            category_to_group = {
-                str(cat).strip().lower().replace("_", "-"): group_name
-                for group_name, categories in category_groups.items()
-                for cat in categories
-            }
-            group_name = category_to_group.get(category_norm)
-
-            if group_name:
-                group_key = f"{type_name}.{group_name}"
-                if group_key in required_properties:
-                    value = required_properties[group_key]
-                    if isinstance(value, str):
-                        value = required_properties.get(value, [])
-                    return set(value)
-
+        group_name = self._get_category_group_name(comp)
+        if group_name:
+            group_key = f"{type_name}.{group_name}"
+            if group_key in required_properties:
+                value = required_properties[group_key]
+                if isinstance(value, str):
+                    value = required_properties.get(value, [])
+                return set(value)
         if type_name == "PLEXOSGenerator":
             return set(required_properties.get("PLEXOSGenerator.thermal-standard", []))
         if type_name == "PLEXOSStorage":
@@ -537,12 +575,14 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     ):
                         key = ts_key.name.strip().lower().replace(" ", "_")
                         if key == "max_active_power":
-                            if sienna_type == "HydroDispatch":
-                                _props.add("Load")
+                            if sienna_type.startswith("Hydro"):
+                                _props.add("Max Energy Hour")
                             else:
                                 _props.update(["Rating", "Load Subtracter"])
                         elif key == "hydro_budget":
-                            _props.add(get_hydro_budget_property_name(ts_key.resolution))
+                            resolved_ts = self._resolve_matching_time_series(_comp, ts_key)
+                            if resolved_ts is not None:
+                                _props.add(get_hydro_budget_property_name(resolved_ts.resolution))
                         elif key in GENERATOR_TO_STORAGE_TS_PROPERTY_MAP:
                             pass
                         else:
@@ -573,9 +613,11 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     ):
                         skey = ts_key.name.strip().lower().replace(" ", "_")
                         if skey == "hydro_budget":
-                            comp_ts_props.setdefault(_gen.name, set()).add(
-                                get_hydro_budget_property_name(ts_key.resolution)
-                            )
+                            resolved_ts = self._resolve_matching_time_series(linked_storage, ts_key)
+                            if resolved_ts is not None:
+                                comp_ts_props.setdefault(_gen.name, set()).add(
+                                    get_hydro_budget_property_name(resolved_ts.resolution)
+                                )
 
             records: list[dict[str, Any]] = []
 
@@ -599,6 +641,24 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             value = getattr(comp, prop_name, None)
                             if value is not None:
                                 aliased_dict[alias_name] = value
+
+                # Thermal-only properties must never appear on hydro generators,
+                # even when the component carries a non-default (non-zero) value.
+                if isinstance(comp, PLEXOSGenerator):
+                    group = self._get_category_group_name(comp)
+                    if group and group.startswith("hydro"):
+                        for alias in _THERMAL_ONLY_ALIASES:
+                            aliased_dict.pop(alias, None)
+
+                if isinstance(comp, PLEXOSGenerator):
+                    has_heat_rate_base = (
+                        "Heat Rate Base" in aliased_dict and aliased_dict["Heat Rate Base"] is not None
+                    )
+                    has_heat_rate_incr = (
+                        "Heat Rate Incr" in aliased_dict and aliased_dict["Heat Rate Incr"] is not None
+                    )
+                    if has_heat_rate_base and has_heat_rate_incr:
+                        aliased_dict.pop("Heat Rate", None)
 
                 for prop_name, raw in aliased_dict.items():
                     if prop_name in metadata_fields or raw is None:
@@ -690,6 +750,60 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 collection=collection,
                 scenario=self.plexos_scenario,
             )
+
+        self._add_line_flow_clip_memo_entries()
+
+    def _add_line_flow_clip_memo_entries(self) -> None:
+        """Insert memo text for clipped Line flow properties.
+
+        Adds memo entries only to `Line` `Min Flow`/`Max Flow` data rows where
+        values are exactly -99999/99999, and only for lines that contain both
+        clipped values.
+        """
+        if self.db is None:
+            return
+
+        try:
+            # Apply memo text only to clipped flow bounds and preserve any existing memo rows.
+            self.db._db.execute(
+                """
+                WITH line_flow_rows AS (
+                    SELECT
+                        d.data_id,
+                        o.object_id,
+                        p.name AS property_name,
+                        CAST(d.value AS REAL) AS flow_value
+                    FROM t_data d
+                    INNER JOIN t_membership m ON d.membership_id = m.membership_id
+                    INNER JOIN t_object o ON m.child_object_id = o.object_id
+                    INNER JOIN t_class c ON o.class_id = c.class_id
+                    INNER JOIN t_property p ON d.property_id = p.property_id
+                    WHERE c.name = 'Line'
+                      AND p.name IN ('Min Flow', 'Max Flow')
+                ),
+                qualified_lines AS (
+                    SELECT object_id
+                    FROM line_flow_rows
+                    GROUP BY object_id
+                    HAVING MAX(CASE WHEN property_name = 'Max Flow' AND flow_value = 99999 THEN 1 ELSE 0 END) = 1
+                        OR MAX(CASE WHEN property_name = 'Min Flow' AND flow_value = -99999 THEN 1 ELSE 0 END) = 1
+                )
+                INSERT INTO t_memo_data (data_id, value)
+                SELECT lfr.data_id, ?
+                FROM line_flow_rows lfr
+                INNER JOIN qualified_lines ql ON ql.object_id = lfr.object_id
+                WHERE (
+                    (lfr.property_name = 'Max Flow' AND lfr.flow_value = 99999)
+                    OR (lfr.property_name = 'Min Flow' AND lfr.flow_value = -99999)
+                )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM t_memo_data md WHERE md.data_id = lfr.data_id
+                  )
+                """,
+                (FLOW_CLIP_MEMO_TEXT,),
+            )
+        except sqlite3.OperationalError as exc:
+            logger.debug("Skipping line flow memo insertion; t_memo_data may be unavailable: {}", exc)
 
     def _bulk_resolve_object_ids(
         self, class_to_names: dict[ClassEnum, set[str]]
@@ -910,6 +1024,13 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             break
 
                     if not matched_file:
+                        fallback_pattern = re.compile(rf"[^_]+_{re.escape(safe_ts_name)}_.*\.csv")
+                        for filename in dir_files:
+                            if fallback_pattern.match(filename):
+                                matched_file = filename
+                                break
+
+                    if not matched_file:
                         continue
 
                     datafile_name = matched_file.removesuffix(".csv")
@@ -922,6 +1043,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                         continue
 
                     key = ts_key.name.strip().lower().replace(" ", "_")
+                    resolved_ts = self._resolve_matching_time_series(component, ts_key)
 
                     target_component = component
                     target_class_enum = class_enum
@@ -953,7 +1075,10 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                 target_component = generator
                                 target_class_enum = gen_class
                                 if key == "hydro_budget":
-                                    property_names = [get_hydro_budget_property_name(ts_key.resolution)]
+                                    if resolved_ts is not None:
+                                        property_names = [
+                                            get_hydro_budget_property_name(resolved_ts.resolution)
+                                        ]
                                 else:
                                     property_names = [STORAGE_TO_GENERATOR_TS_PROPERTY_MAP[key]]
                         else:
@@ -967,13 +1092,14 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     else:
                         if isinstance(component, PLEXOSGenerator) and key == "max_active_power":
                             sienna_type = (getattr(component, "ext", None) or {}).get("sienna_type", "")
-                            if sienna_type == "HydroDispatch":
-                                # Must-dispatch available flow; attach to "Load" not "Rating"
-                                property_names = ["Load"]
+                            if sienna_type.startswith("Hydro"):
+                                # Hourly available flow; attach to "Max Energy Hour"
+                                property_names = ["Max Energy Hour"]
                             else:
                                 property_names = ["Rating", "Load Subtracter"]
                         elif isinstance(component, PLEXOSGenerator) and key == "hydro_budget":
-                            property_names = [get_hydro_budget_property_name(ts_key.resolution)]
+                            if resolved_ts is not None:
+                                property_names = [get_hydro_budget_property_name(resolved_ts.resolution)]
                         else:
                             property_name = self._get_time_series_property_name(
                                 component, ts_key_name=ts_key.name
@@ -1097,6 +1223,107 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
 
         return mapping
 
+    def _resolve_matching_time_series(self, component: Any, ts_key: Any) -> Any | None:
+        """Resolve the best matching TS variant for a key using timestamp/resolution."""
+        key = str(getattr(ts_key, "name", "")).strip().lower().replace(" ", "_")
+        try:
+            ts_list = self.system.list_time_series(component, name=ts_key.name, **ts_key.features)
+        except RuntimeError as e:
+            logger.error("Failed to get time series for {}.{}: {}", component.name, ts_key.name, e)
+            return None
+
+        if not isinstance(ts_list, list):
+            try:
+                ts_list = list(ts_list)
+            except TypeError:
+                ts_list = [ts_list]
+
+        if not ts_list:
+            logger.warning("No time series found for {}.{}; skipping", component.name, ts_key.name)
+            return None
+
+        initial_ts_raw = getattr(ts_key, "initial_timestamp", None)
+        initial_ts = initial_ts_raw if isinstance(initial_ts_raw, datetime) else None
+        ts_resolution_raw = getattr(ts_key, "resolution", None)
+        ts_resolution = ts_resolution_raw if isinstance(ts_resolution_raw, timedelta) else None
+
+        if len(ts_list) > 1:
+            if key == "hydro_budget":
+                return max(
+                    ts_list,
+                    key=lambda t: getattr(getattr(t, "resolution", None), "total_seconds", lambda: 0)(),
+                )
+
+            matched = next(
+                (
+                    t
+                    for t in ts_list
+                    if getattr(t, "initial_timestamp", None) == initial_ts
+                    and getattr(t, "resolution", None) == ts_resolution
+                ),
+                None,
+            )
+            if matched is None and ts_resolution is not None:
+                matched = next(
+                    (t for t in ts_list if getattr(t, "resolution", None) == ts_resolution),
+                    None,
+                )
+            if matched is None and ts_resolution is None and initial_ts is not None:
+                matched = next(
+                    (t for t in ts_list if getattr(t, "initial_timestamp", None) == initial_ts),
+                    None,
+                )
+            if matched is None:
+                logger.warning(
+                    "No matching TS variant for {}.{} (initial_ts={}, resolution={}); skipping",
+                    component.name,
+                    ts_key.name,
+                    initial_ts,
+                    ts_resolution,
+                )
+                return None
+            return matched
+
+        ts = ts_list[0]
+        ts_actual_resolution = getattr(ts, "resolution", None)
+        # hydro_budget: skip only when the single variant is *finer* than the key's
+        # resolution (it would be the hourly energy profile, not the weekly budget).
+        # A coarser-than-key variant is accepted — the key may be mis-tagged as hourly
+        # while the system only holds the weekly budget series.
+        if (
+            key == "hydro_budget"
+            and ts_resolution is not None
+            and ts_actual_resolution is not None
+            and ts_actual_resolution < ts_resolution
+        ):
+            logger.warning(
+                "hydro_budget TS for {}.{} is finer ({}) than key resolution ({}); skipping",
+                component.name,
+                ts_key.name,
+                ts_actual_resolution,
+                ts_resolution,
+            )
+            return None
+        if key != "hydro_budget" and ts_resolution is not None and ts_actual_resolution != ts_resolution:
+            logger.warning(
+                "TS resolution mismatch for {}.{} (expected {}, got {}); skipping",
+                component.name,
+                ts_key.name,
+                ts_resolution,
+                ts_actual_resolution,
+            )
+            return None
+        if initial_ts is not None and getattr(ts, "initial_timestamp", None) != initial_ts:
+            logger.warning(
+                "TS initial_timestamp mismatch for {}.{} (expected {}, got {}); skipping",
+                component.name,
+                ts_key.name,
+                initial_ts,
+                getattr(ts, "initial_timestamp", None),
+            )
+            return None
+        return ts
+
     def export_time_series(self) -> Result[None, str]:
         """Export all time series data from the system to CSV files and update property references."""
         all_components_with_ts = []
@@ -1117,8 +1344,12 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
 
         logger.debug(f"Found {len(ts_metadata)} time series keys total")
 
-        def _grouping_key(item: tuple[Any, Any]) -> tuple[Any, ...]:
-            """Group by variable name, initial timestamp, resolution, and features."""
+        def _grouping_key(item: tuple[Any, Any]) -> tuple:
+            """Group by component class plus variable/time identity fields.
+
+            Including component class avoids mixing identically named series
+            across different component types.
+            """
             component, ts_key = item
             initial_ts = getattr(ts_key, "initial_timestamp", None)
             resolution = getattr(ts_key, "resolution", None)
@@ -1226,6 +1457,35 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 if not self.system.has_component(datafile_obj):
                     self.system.add_component(datafile_obj)
                     logger.debug(f"Created DataFile object: {datafile_obj.name}")
+
+    def _resolve_db_consistency(self) -> None:
+        """Fix database inconsistencies that cause PLEXOS validation warnings.
+
+        Updates max_band_id in t_property to match the actual maximum band used
+        in t_band for each property (avoids 'Band count exceeded' warnings).
+        """
+        if self.db is None:
+            return
+
+        # update max_band_id in t_property to match actual max band value
+        self.db._db.execute(
+            """
+            UPDATE t_property
+            SET max_band_id = (
+                SELECT MAX(b.band_id)
+                FROM t_band b
+                JOIN t_data d ON b.data_id = d.data_id
+                WHERE d.property_id = t_property.property_id
+            )
+            WHERE EXISTS (
+                SELECT 1
+                FROM t_band b
+                JOIN t_data d ON b.data_id = d.data_id
+                WHERE d.property_id = t_property.property_id
+                  AND b.band_id > COALESCE(t_property.max_band_id, 1)
+            )
+            """
+        )
 
     def _validate_xml(self, xml_path: str) -> bool:
         """

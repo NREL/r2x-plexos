@@ -6,6 +6,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from r2x_plexos import PLEXOSProperty, PLEXOSPropertyValue
+from r2x_plexos.models.property_specification import PropertySpecification
 
 
 class SimpleModel(BaseModel):
@@ -172,3 +173,30 @@ def test_has_methods():
     # has_text
     prop_text = PLEXOSPropertyValue.from_records([{"text": "abc", "value": 1}])
     assert prop_text.has_text()
+
+
+def test_property_spec_list_deserialization_applies_units():
+    model = SimpleModel(value=[{"scenario": "Base", "value": 100}])
+    assert isinstance(model.value, PLEXOSPropertyValue)
+    assert model.value.units == "MW"
+
+
+def test_property_spec_enum_rejects_non_integer_in_property_value():
+    class EnumModel(BaseModel):
+        value: Annotated[int, PLEXOSProperty(is_enum=True)]
+
+    prop = PLEXOSPropertyValue.from_records([{"value": 1.5}])
+    with pytest.raises(ValidationError):
+        EnumModel(value=prop)
+
+
+def test_property_spec_serialize_none_and_passthrough():
+    spec = PropertySpecification()
+    assert spec._serialize_property_value(None, None) is None
+    assert spec._serialize_property_value("plain", None) == "plain"
+
+
+def test_property_spec_validate_value_unsupported_type_raises():
+    spec = PropertySpecification()
+    with pytest.raises(TypeError):
+        spec._validate_value(object(), None)

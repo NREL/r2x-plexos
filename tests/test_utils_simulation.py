@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+import pytest
 from plexosdb import ClassEnum, PlexosDB
 
 from r2x_plexos.models.simulation_config import (
@@ -14,11 +15,13 @@ from r2x_plexos.models.simulation_config import (
     PLEXOSSTSchedule,
     PLEXOSTransmission,
 )
+from r2x_plexos.utils_plexosdb import validate_simulation_attribute
 from r2x_plexos.utils_simulation import (
     build_plexos_simulation,
     convert_simulation_config_to_attributes,
     datetime_to_ole_date,
     get_default_simulation_config,
+    get_enum_from_string,
     ingest_simulation_config_to_plexosdb,
     ingest_simulation_to_plexosdb,
     validate_simulation_config,
@@ -858,3 +861,349 @@ def test_shift_ole_date_to_year_non_leap_non_feb29_unchanged():
     ole = datetime_to_ole_date(datetime(2012, 6, 15))
     shifted = _shift_ole_date_to_year(ole, 2023)
     assert shifted == datetime_to_ole_date(datetime(2023, 6, 15))
+
+
+def test_ingest_static_simulation_sets_base_diagnose_defaults(tmp_path):
+    """Ensure base_diagnose has default diagnostic checkboxes enabled."""
+    from r2x_plexos import PLEXOSConfig
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    template_path = config.get_config_path().joinpath(FILE_NAME)
+    db = PlexosDB.from_xml(template_path)
+
+    static_model_defaults = PLEXOSConfig.load_static_models()
+    static_horizon_defaults = PLEXOSConfig.load_static_horizons()
+    defaults = {**static_model_defaults, **static_horizon_defaults}
+
+    build_result = build_plexos_simulation({"horizon_year": 2024}, defaults=defaults)
+    assert build_result.is_ok()
+
+    ingest_result = ingest_simulation_to_plexosdb(db, build_result.unwrap())
+    assert ingest_result.is_ok()
+
+    requested_attr_candidates = [
+        ("Database Load",),
+        ("Summary Each Step", "Step Summary"),
+        ("Execution Times", "Times"),
+        ("Task Size",),
+        ("LP Solver Progress", "LP Progress"),
+        ("Computer Information",),
+        ("MIP Solver Progress", "MIP Progress"),
+    ]
+
+    assert db.check_object_exists(ClassEnum.Diagnostic, "base_diagnose")
+    # The template/version may use alternate names for some requested options.
+    # Verify we set defaults for each requested option via any supported candidate name.
+    for candidates in requested_attr_candidates:
+        resolved_name = None
+        for candidate in candidates:
+            if validate_simulation_attribute(db, ClassEnum.Diagnostic, candidate).is_ok():
+                resolved_name = candidate
+                break
+
+        if resolved_name is None:
+            continue
+
+        values = db.get_attribute(
+            ClassEnum.Diagnostic,
+            object_name="base_diagnose",
+            attribute_name=resolved_name,
+        )
+        assert values is not None
+        assert values[0] == -1
+
+
+def test_ingest_static_simulation_sets_base_transmission_defaults(tmp_path):
+    """Ensure base_transmission has requested Transmission defaults enabled."""
+    from r2x_plexos import PLEXOSConfig
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    template_path = config.get_config_path().joinpath(FILE_NAME)
+    db = PlexosDB.from_xml(template_path)
+
+    static_model_defaults = PLEXOSConfig.load_static_models()
+    static_horizon_defaults = PLEXOSConfig.load_static_horizons()
+    defaults = {**static_model_defaults, **static_horizon_defaults}
+
+    build_result = build_plexos_simulation({"horizon_year": 2024}, defaults=defaults)
+    assert build_result.is_ok()
+
+    ingest_result = ingest_simulation_to_plexosdb(db, build_result.unwrap())
+    assert ingest_result.is_ok()
+
+    assert db.check_object_exists(ClassEnum.Transmission, "base_transmission")
+
+    expected_values = {
+        "OF Method": 1,
+        "Formulate Upfront": -1,
+        "Constraints Enabled": -1,
+        "Interface Constraints Enabled": -1,
+        "Enforce Limits On Lines In Interfaces": -1,
+        "Losses Enabled": -1,
+    }
+
+    # Set and verify only attributes that are supported by the active schema/template.
+    for attr_name, expected in expected_values.items():
+        if validate_simulation_attribute(db, ClassEnum.Transmission, attr_name).is_err():
+            continue
+
+        values = db.get_attribute(
+            ClassEnum.Transmission,
+            object_name="base_transmission",
+            attribute_name=attr_name,
+        )
+        assert values is not None
+        assert values[0] == expected
+
+
+def test_ingest_static_simulation_sets_base_performance_mip_gap_to_one_percent(tmp_path):
+    """Ensure base_performance uses 1% MIP relative gap by default."""
+    from r2x_plexos import PLEXOSConfig
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    template_path = config.get_config_path().joinpath(FILE_NAME)
+    db = PlexosDB.from_xml(template_path)
+
+    static_model_defaults = PLEXOSConfig.load_static_models()
+    static_horizon_defaults = PLEXOSConfig.load_static_horizons()
+    defaults = {**static_model_defaults, **static_horizon_defaults}
+
+    build_result = build_plexos_simulation({"horizon_year": 2024}, defaults=defaults)
+    assert build_result.is_ok()
+
+    ingest_result = ingest_simulation_to_plexosdb(db, build_result.unwrap())
+    assert ingest_result.is_ok()
+
+    assert db.check_object_exists(ClassEnum.Performance, "base_performance")
+    values = db.get_attribute(
+        ClassEnum.Performance,
+        object_name="base_performance",
+        attribute_name="MIP Relative Gap",
+    )
+    assert values is not None
+    assert values[0] == 0.01
+
+
+def test_ingest_static_simulation_overwrites_existing_performance_mip_gap(tmp_path):
+    """Ensure an existing non-1% MIP gap is forced to 0.01 for base_performance."""
+    from r2x_plexos import PLEXOSConfig
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    template_path = config.get_config_path().joinpath(FILE_NAME)
+    db = PlexosDB.from_xml(template_path)
+
+    if not db.check_object_exists(ClassEnum.Performance, "base_performance"):
+        db.add_object(ClassEnum.Performance, "base_performance")
+
+    if validate_simulation_attribute(db, ClassEnum.Performance, "MIP Relative Gap").is_ok():
+        object_id = db.get_object_id(ClassEnum.Performance, "base_performance")
+        attribute_id = db.get_attribute_id(ClassEnum.Performance, name="MIP Relative Gap")
+        updated = db._db.execute(
+            """
+            UPDATE t_attribute_data
+            SET value = ?
+            WHERE object_id = ? AND attribute_id = ?
+            """,
+            (0.0001, object_id, attribute_id),
+        )
+        if getattr(updated, "rowcount", 0) == 0:
+            db.add_attribute(
+                ClassEnum.Performance,
+                "base_performance",
+                attribute_name="MIP Relative Gap",
+                attribute_value=0.0001,
+            )
+
+    static_model_defaults = PLEXOSConfig.load_static_models()
+    static_horizon_defaults = PLEXOSConfig.load_static_horizons()
+    defaults = {**static_model_defaults, **static_horizon_defaults}
+
+    build_result = build_plexos_simulation({"horizon_year": 2024}, defaults=defaults)
+    assert build_result.is_ok()
+
+    ingest_result = ingest_simulation_to_plexosdb(db, build_result.unwrap())
+    assert ingest_result.is_ok()
+
+    values = db.get_attribute(
+        ClassEnum.Performance,
+        object_name="base_performance",
+        attribute_name="MIP Relative Gap",
+    )
+    assert values is not None
+    assert values[0] == 0.01
+
+
+def test_ingest_static_simulation_overwrites_base_mip_to_integer_uc(tmp_path):
+    """Ensure base MIP Production uses Integer unit commitment optimality."""
+    from r2x_plexos import PLEXOSConfig
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    template_path = config.get_config_path().joinpath(FILE_NAME)
+    db = PlexosDB.from_xml(template_path)
+
+    if not db.check_object_exists(ClassEnum.Production, "base MIP"):
+        db.add_object(ClassEnum.Production, "base MIP")
+
+    if validate_simulation_attribute(db, ClassEnum.Production, "Unit Commitment Optimality").is_ok():
+        object_id = db.get_object_id(ClassEnum.Production, "base MIP")
+        attribute_id = db.get_attribute_id(ClassEnum.Production, name="Unit Commitment Optimality")
+        updated = db._db.execute(
+            """
+            UPDATE t_attribute_data
+            SET value = ?
+            WHERE object_id = ? AND attribute_id = ?
+            """,
+            (0, object_id, attribute_id),
+        )
+        if getattr(updated, "rowcount", 0) == 0:
+            db.add_attribute(
+                ClassEnum.Production,
+                "base MIP",
+                attribute_name="Unit Commitment Optimality",
+                attribute_value=0,
+            )
+
+    static_model_defaults = PLEXOSConfig.load_static_models()
+    static_horizon_defaults = PLEXOSConfig.load_static_horizons()
+    defaults = {**static_model_defaults, **static_horizon_defaults}
+
+    build_result = build_plexos_simulation({"horizon_year": 2024}, defaults=defaults)
+    assert build_result.is_ok()
+
+    ingest_result = ingest_simulation_to_plexosdb(db, build_result.unwrap())
+    assert ingest_result.is_ok()
+
+    values = db.get_attribute(
+        ClassEnum.Production,
+        object_name="base MIP",
+        attribute_name="Unit Commitment Optimality",
+    )
+    assert values is not None
+    assert values[0] == 2
+
+
+def test_ingest_simulation_sets_production_example_to_integer_uc(tmp_path):
+    """Ensure Production_Example uses Integer unit commitment optimality."""
+    from r2x_plexos import PLEXOSConfig
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    template_path = config.get_config_path().joinpath(FILE_NAME)
+    db = PlexosDB.from_xml(template_path)
+
+    simulation_config = get_default_simulation_config()
+    # Set to Linear initially to confirm ingest forces it to Integer.
+    simulation_config["production"].unit_commitment_optimality = 0
+
+    static_model_defaults = PLEXOSConfig.load_static_models()
+    static_horizon_defaults = PLEXOSConfig.load_static_horizons()
+    defaults = {**static_model_defaults, **static_horizon_defaults}
+
+    build_result = build_plexos_simulation(
+        {"horizon_year": 2024},
+        defaults=defaults,
+        simulation_config=simulation_config,
+    )
+    assert build_result.is_ok()
+
+    ingest_result = ingest_simulation_to_plexosdb(db, build_result.unwrap())
+    assert ingest_result.is_ok()
+
+    values = db.get_attribute(
+        ClassEnum.Production,
+        object_name="Production_Example",
+        attribute_name="Unit Commitment Optimality",
+    )
+    assert values is not None
+    assert values[0] == 2
+
+
+def test_build_static_simulation_keeps_d1_horizon_one_day():
+    """Ensure base_<year>_d1 horizon remains a one-day chrono test horizon."""
+    from r2x_plexos import PLEXOSConfig
+
+    static_model_defaults = PLEXOSConfig.load_static_models()
+    static_horizon_defaults = PLEXOSConfig.load_static_horizons()
+    defaults = {**static_model_defaults, **static_horizon_defaults}
+
+    result = build_plexos_simulation(
+        {"horizon_year": 2023},
+        defaults=defaults,
+    )
+    assert result.is_ok()
+
+    build_result = result.unwrap()
+    d1 = next((h for h in build_result.horizons if h.name == "base_2023_d1"), None)
+
+    assert d1 is not None
+    assert d1.chrono_step_count == 1.0
+
+
+def test_ingest_static_simulation_sets_base_st_deterministic(tmp_path):
+    """Ensure base_st ST Schedule runs in deterministic mode."""
+    from r2x_plexos import PLEXOSConfig
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    template_path = config.get_config_path().joinpath(FILE_NAME)
+    db = PlexosDB.from_xml(template_path)
+
+    if not db.check_object_exists(ClassEnum.STSchedule, "base_st"):
+        db.add_object(ClassEnum.STSchedule, "base_st")
+
+    if validate_simulation_attribute(db, ClassEnum.STSchedule, "Stochastic Method").is_ok():
+        object_id = db.get_object_id(ClassEnum.STSchedule, "base_st")
+        attribute_id = db.get_attribute_id(ClassEnum.STSchedule, name="Stochastic Method")
+        updated = db._db.execute(
+            """
+            UPDATE t_attribute_data
+            SET value = ?
+            WHERE object_id = ? AND attribute_id = ?
+            """,
+            (2, object_id, attribute_id),
+        )
+        if getattr(updated, "rowcount", 0) == 0:
+            db.add_attribute(
+                ClassEnum.STSchedule,
+                "base_st",
+                attribute_name="Stochastic Method",
+                attribute_value=2,
+            )
+
+    static_model_defaults = PLEXOSConfig.load_static_models()
+    static_horizon_defaults = PLEXOSConfig.load_static_horizons()
+    defaults = {**static_model_defaults, **static_horizon_defaults}
+
+    build_result = build_plexos_simulation({"horizon_year": 2024}, defaults=defaults)
+    assert build_result.is_ok()
+
+    ingest_result = ingest_simulation_to_plexosdb(db, build_result.unwrap())
+    assert ingest_result.is_ok()
+
+    values = db.get_attribute(
+        ClassEnum.STSchedule,
+        object_name="base_st",
+        attribute_name="Stochastic Method",
+    )
+    assert values is not None
+    assert values[0] == 0
+
+
+def test_get_enum_from_string_raises_for_no_match():
+    """No close enum member should raise KeyError."""
+    with pytest.raises(KeyError):
+        get_enum_from_string("zzzzzzzzzz", ClassEnum)
+
+
+def test_convert_simulation_config_to_attributes_returns_err_on_bad_object():
+    """Conversion should return Err when model fields cannot be read."""
+
+    class FieldInfo:
+        alias = "BROKEN"
+
+    class BrokenConfig:
+        model_fields = {"broken": FieldInfo()}
+
+        def __getattr__(self, _name):
+            raise RuntimeError("boom")
+
+    result = convert_simulation_config_to_attributes(BrokenConfig())
+    assert result.is_err()

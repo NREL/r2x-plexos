@@ -1,6 +1,6 @@
 """Tests for exporter utility helpers."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -15,6 +15,7 @@ from r2x_plexos.utils_exporter import (
     format_datetime,
     generate_csv_filename,
     get_component_category,
+    get_hydro_budget_property_name,
     get_output_directory,
 )
 
@@ -251,3 +252,23 @@ def test_export_time_series_csv_multiple_components(tmp_path: Path):
     assert "comp1" in header
     assert "comp2" in header
     assert "comp3" in header
+
+
+def test_get_hydro_budget_property_name_hour_resolution():
+    assert get_hydro_budget_property_name(timedelta(hours=1)) == "Max Energy Hour"
+
+
+def test_get_hydro_budget_property_name_day_resolution():
+    assert get_hydro_budget_property_name(timedelta(days=1)) == "Max Energy Day"
+
+
+def test_get_hydro_budget_property_name_week_resolution():
+    assert get_hydro_budget_property_name(timedelta(days=7)) == "Max Energy Week"
+
+
+def test_get_hydro_budget_property_name_month_resolution():
+    assert get_hydro_budget_property_name(timedelta(days=31)) == "Max Energy Month"
+
+
+def test_get_hydro_budget_property_name_year_resolution():
+    assert get_hydro_budget_property_name(timedelta(days=32)) == "Max Energy Year"

@@ -38,6 +38,17 @@ def reset_global_context():
     set_horizon(None)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_repo_data_folder(pytestconfig: pytest.Config):
+    """Delete the Data/ folder created in the repo root as a side-effect of tests."""
+    yield
+    import shutil
+
+    data_dir = pytestconfig.rootpath / "Data"
+    if data_dir.exists() and data_dir.is_dir():
+        shutil.rmtree(data_dir)
+
+
 @pytest.fixture(scope="session")
 def data_folder(pytestconfig: pytest.Config) -> Path:
     return pytestconfig.rootpath.joinpath(DATA_FOLDER)

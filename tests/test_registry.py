@@ -283,3 +283,22 @@ def test_collection_enum_not_found_in_special_plurals():
         collection_enum = PLEXOSComponentRegistry.get_collection_enum(ClassEnum.System, class_enum)
         # Should either return a CollectionEnum or None, never crash
         assert collection_enum is None or isinstance(collection_enum, CollectionEnum)
+
+
+def test_get_collection_enum_handles_special_plural_lookup_failure(mocker):
+    """Covers the inner special-plural lookup exception path."""
+
+    class RaisingCollectionEnum:
+        def __getitem__(self, key):
+            raise KeyError(key)
+
+    mocker.patch("r2x_plexos.models.registry.CollectionEnum", new=RaisingCollectionEnum())
+
+    key = (ClassEnum.System, ClassEnum.Storage)
+    original = PLEXOSComponentRegistry._collection_registry.copy()
+    PLEXOSComponentRegistry._collection_registry.pop(key, None)
+    try:
+        collection_enum = PLEXOSComponentRegistry.get_collection_enum(ClassEnum.System, ClassEnum.Storage)
+        assert collection_enum is None
+    finally:
+        PLEXOSComponentRegistry._collection_registry = original

@@ -104,7 +104,6 @@
       "units",
       "commit",
       "vom_charge",
-      "fom_charge",
       "forced_outage_rate",
       "maintenance_rate",
       "mean_time_to_repair"
@@ -118,7 +117,6 @@
       "maintenance_rate",
       "mean_time_to_repair",
       "min_stable_level",
-      "max_energy_day",
       "max_ramp_up",
       "max_ramp_down"
     ],
@@ -147,6 +145,9 @@
       "units"
     ],
     "PLEXOSNode": [
+      "units"
+    ],
+    "PLEXOSZone": [
       "units"
     ],
     "PLEXOSInterface": [

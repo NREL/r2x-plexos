@@ -1385,24 +1385,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
 
             time_series_data: list[tuple[str, Any]] = []
             for component, ts_key in group_list:
-                try:
-                    ts_list = self.system.list_time_series(component, name=ts_key.name, **ts_key.features)
-                    if not ts_list:
-                        logger.warning(
-                            "No time series found for {}.{}; skipping", component.name, ts_key.name
-                        )
-                        continue
-                    initial_ts = getattr(ts_key, "initial_timestamp", None)
-                    if initial_ts is not None and len(ts_list) > 1:
-                        matched = next(
-                            (t for t in ts_list if getattr(t, "initial_timestamp", None) == initial_ts),
-                            None,
-                        )
-                        ts = matched if matched is not None else ts_list[0]
-                    else:
-                        ts = ts_list[0]
-                except Exception as e:
-                    logger.error("Failed to get time series for {}.{}: {}", component.name, ts_key.name, e)
+                ts = self._resolve_matching_time_series(component, ts_key)
+                if ts is None:
                     continue
                 time_series_data.append((component.name, ts))
 

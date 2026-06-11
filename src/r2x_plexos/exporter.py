@@ -365,6 +365,16 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     logger.debug(f"Component type: {component_type.__name__}, names: {names[:5]}")
                     raise
 
+            # Write object descriptions to t_object when present on the component model
+            class_id = self.db.get_class_id(class_enum)
+            for comp in components:
+                desc = getattr(comp, "description", None)
+                if isinstance(desc, str) and desc:
+                    self.db._db.execute(
+                        "UPDATE t_object SET description=? WHERE class_id=? AND name=?",
+                        (desc, class_id, comp.name),
+                    )
+
             self.db._db.execute(f"UPDATE t_class SET is_enabled=1 WHERE t_class.name='{class_enum}'")
             logger.debug(f"Enabled class: {class_enum.name}")
 

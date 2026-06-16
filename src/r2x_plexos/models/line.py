@@ -1,10 +1,11 @@
 """The following file contains Pydantic models for a PLEXOS Line model."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import Field
 
 from .component import PLEXOSObject
+from .property import PLEXOSPropertyValue
 from .property_specification import PLEXOSProperty
 
 
@@ -333,7 +334,7 @@ class PLEXOSLine(PLEXOSObject):
         ),
     ] = 1e30
     max_flow: Annotated[
-        float | int,
+        float | int | dict[str, Any] | PLEXOSPropertyValue,
         PLEXOSProperty(units="MW"),
         Field(
             alias="Max Flow",
@@ -434,7 +435,7 @@ class PLEXOSLine(PLEXOSObject):
         ),
     ] = -1e30
     min_flow: Annotated[
-        float | int,
+        float | int | dict[str, Any] | PLEXOSPropertyValue,
         PLEXOSProperty(units="MW"),
         Field(
             alias="Min Flow",

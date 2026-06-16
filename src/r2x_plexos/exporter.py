@@ -1,7 +1,6 @@
 """Export PLEXOS system to XML."""
 
 import os
-import sqlite3
 from datetime import datetime, timedelta
 from itertools import groupby
 from pathlib import Path
@@ -688,14 +687,19 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                         continue
 
                     if isinstance(raw, (int, float, str, bool)):
-                        records.append(
-                            {
-                                "name": comp.name,
-                                "property": prop_name,
-                                "value": raw,
-                                "band": 1,
-                            }
-                        )
+                        rec: dict[str, Any] = {
+                            "name": comp.name,
+                            "property": prop_name,
+                            "value": raw,
+                            "band": 1,
+                        }
+                        if (
+                            prop_name in ("Max Flow", "Min Flow")
+                            and isinstance(raw, (int, float))
+                            and abs(raw) == 99999
+                        ):
+                            rec["+memo"] = FLOW_CLIP_MEMO_TEXT
+                        records.append(rec)
                         continue
 
                     if isinstance(raw, list):
@@ -705,6 +709,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             rec_value = rec.get("value")
                             if rec_value is None:
                                 continue
+                            memo_text = rec.get("memo")
                             records.append(
                                 {
                                     "name": comp.name,
@@ -719,11 +724,13 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                     "datafile_text": rec.get("datafile_text")
                                     or rec.get("datafile_name")
                                     or rec.get("text"),
+                                    **({"\u002bmemo": memo_text} if memo_text else {}),
                                 }
                             )
                         continue
 
                     if isinstance(raw, dict):
+                        memo_text = raw.get("memo")
                         records.append(
                             {
                                 "name": comp.name,
@@ -736,6 +743,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                 "datafile_text": raw.get("datafile_text")
                                 or raw.get("datafile_name")
                                 or raw.get("text"),
+                                **({"+memo": memo_text} if memo_text else {}),
                             }
                         )
                         continue
@@ -760,60 +768,62 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 collection=collection,
                 scenario=self.plexos_scenario,
             )
+            self._insert_property_memos(records, class_enum)
 
-        self._add_line_flow_clip_memo_entries()
+        self._add_component_description_memos()
 
-    def _add_line_flow_clip_memo_entries(self) -> None:
-        """Insert memo text for clipped Line flow properties.
-
-        Adds memo entries only to `Line` `Min Flow`/`Max Flow` data rows where
-        values are exactly -99999/99999, and only for lines that contain both
-        clipped values.
-        """
+    def _insert_property_memos(
+        self,
+        records: list[dict[str, Any]],
+        class_enum: ClassEnum,
+    ) -> None:
+        """Insert t_memo_data entries for property records carrying a '+memo' key."""
         if self.db is None:
             return
-
-        try:
-            # Apply memo text only to clipped flow bounds and preserve any existing memo rows.
-            self.db._db.execute(
+        memo_records = [(r["name"], r["property"], r["value"], r["+memo"]) for r in records if r.get("+memo")]
+        if not memo_records:
+            return
+        class_id = self.db.get_class_id(class_enum)
+        memo_inserts: list[tuple[int, str]] = []
+        for obj_name, prop_alias, value, memo_text in memo_records:
+            data_ids = self.db._db.fetchall(
                 """
-                WITH line_flow_rows AS (
-                    SELECT
-                        d.data_id,
-                        o.object_id,
-                        p.name AS property_name,
-                        CAST(d.value AS REAL) AS flow_value
-                    FROM t_data d
-                    INNER JOIN t_membership m ON d.membership_id = m.membership_id
-                    INNER JOIN t_object o ON m.child_object_id = o.object_id
-                    INNER JOIN t_class c ON o.class_id = c.class_id
-                    INNER JOIN t_property p ON d.property_id = p.property_id
-                    WHERE c.name = 'Line'
-                      AND p.name IN ('Min Flow', 'Max Flow')
-                ),
-                qualified_lines AS (
-                    SELECT object_id
-                    FROM line_flow_rows
-                    GROUP BY object_id
-                    HAVING MAX(CASE WHEN property_name = 'Max Flow' AND flow_value = 99999 THEN 1 ELSE 0 END) = 1
-                        OR MAX(CASE WHEN property_name = 'Min Flow' AND flow_value = -99999 THEN 1 ELSE 0 END) = 1
-                )
-                INSERT INTO t_memo_data (data_id, value)
-                SELECT lfr.data_id, ?
-                FROM line_flow_rows lfr
-                INNER JOIN qualified_lines ql ON ql.object_id = lfr.object_id
-                WHERE (
-                    (lfr.property_name = 'Max Flow' AND lfr.flow_value = 99999)
-                    OR (lfr.property_name = 'Min Flow' AND lfr.flow_value = -99999)
-                )
-                  AND NOT EXISTS (
-                      SELECT 1 FROM t_memo_data md WHERE md.data_id = lfr.data_id
-                  )
+                SELECT d.data_id
+                FROM t_data d
+                INNER JOIN t_membership m ON d.membership_id = m.membership_id
+                INNER JOIN t_object o ON m.child_object_id = o.object_id
+                INNER JOIN t_property p ON d.property_id = p.property_id
+                WHERE o.class_id = ? AND o.name = ? AND p.name = ? AND d.value = ?
                 """,
-                (FLOW_CLIP_MEMO_TEXT,),
+                (class_id, obj_name, prop_alias, value),
             )
-        except sqlite3.OperationalError as exc:
-            logger.debug("Skipping line flow memo insertion; t_memo_data may be unavailable: {}", exc)
+            for (data_id,) in data_ids:
+                memo_inserts.append((data_id, memo_text))
+        if memo_inserts:
+            self.db._db.executemany(
+                "INSERT OR IGNORE INTO t_memo_data (data_id, value) VALUES (?, ?)",
+                memo_inserts,
+            )
+
+    def _add_component_description_memos(self) -> None:
+        """Write t_object descriptions for all components that carry a non-null description."""
+        if self.db is None:
+            return
+        skip_types = {PLEXOSModel, PLEXOSHorizon, PLEXOSDatafile, PLEXOSMembership}
+        for component_type in self.system.get_component_types():
+            if component_type in skip_types:
+                continue
+            class_enum = PLEXOS_TYPE_MAP_INVERTED.get(cast(type[PLEXOSObject], component_type))
+            if not class_enum:
+                continue
+            class_id = self.db.get_class_id(class_enum)
+            for comp in self.system.get_components(component_type):
+                desc = getattr(comp, "description", None)
+                if isinstance(desc, str) and desc:
+                    self.db._db.execute(
+                        "UPDATE t_object SET description=? WHERE class_id=? AND name=?",
+                        (desc, class_id, comp.name),
+                    )
 
     def _bulk_resolve_object_ids(
         self, class_to_names: dict[ClassEnum, set[str]]

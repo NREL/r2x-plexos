@@ -28,6 +28,7 @@ class PLEXOSRow:
     date_to: str | None = None
     text: str | None = None
     text_class_name: str | None = None  # Type of text reference: "Data File", "Timeslice", "Variable"
+    memo: str | None = None  # Optional memo text for t_memo_data
 
 
 @dataclass(frozen=True)

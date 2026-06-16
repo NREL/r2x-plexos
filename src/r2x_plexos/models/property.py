@@ -90,6 +90,7 @@ class PLEXOSPropertyValue:
             action=data.get("action"),
             text=data.get("text"),
             units=data.get("units"),
+            memo=data.get("memo"),
         )
         return prop
 
@@ -134,6 +135,7 @@ class PLEXOSPropertyValue:
                 text_class_name=record.get("text_class_name"),  # Capture type of text reference
                 action=record.get("action"),
                 units=record.get("units") or units,
+                memo=record.get("memo"),
             )
         return prop
 
@@ -185,6 +187,7 @@ class PLEXOSPropertyValue:
                     "units": row.units,
                     "text": row.text,
                     "text_class_name": getattr(row, "text_class_name", None),
+                    "memo": row.memo,
                 }
                 for row in value.entries.values()
             ]
@@ -212,6 +215,7 @@ class PLEXOSPropertyValue:
         units: str | None = None,
         text: str | None = None,
         text_class_name: str | None = None,
+        memo: str | None = None,
     ) -> None:
         """Add a property value entry with full metadata."""
         key = PLEXOSPropertyKey(
@@ -242,6 +246,7 @@ class PLEXOSPropertyValue:
             units=units,
             text=text,
             text_class_name=text_class_name,
+            memo=memo,
         )
 
         self.entries[key] = row

@@ -1056,6 +1056,104 @@ def test_add_component_memberships_no_valid_records_warns(template_db, caplog):
     assert "No valid membership records to add." in caplog.text
 
 
+def test_add_component_memberships_enables_used_collections(template_db):
+    """After bulk insert, _add_component_memberships sets is_enabled=1 for all used collections.
+
+    add_memberships_from_records (bulk path) does not flip the is_enabled flag on
+    t_collection. The exporter must do so explicitly; otherwise PLEXOS ignores the
+    memberships because the collection appears disabled.
+    """
+    from unittest.mock import Mock, patch
+
+    from r2x_plexos.models import PLEXOSRegion
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_obj = System(name="test")
+
+    region = PLEXOSRegion(name="RegA")
+    node = PLEXOSNode(name="NodeA")
+
+    template_db.add_object(ClassEnum.Region, "RegA", category="default")
+    template_db.add_object(ClassEnum.Node, "NodeA", category="default")
+
+    coll_id = template_db.get_collection_id(
+        CollectionEnum.ReferenceNode,
+        parent_class_enum=ClassEnum.Region,
+        child_class_enum=ClassEnum.Node,
+    )
+    row_before = template_db._db.fetchone(
+        "SELECT is_enabled FROM t_collection WHERE collection_id=?", (coll_id,)
+    )
+    assert row_before is not None
+    assert row_before[0] == 0, "Precondition: collection must start with is_enabled=0"
+
+    mock_membership = Mock()
+    mock_membership.parent_object = region
+    mock_membership.child_object = node
+    mock_membership.collection = CollectionEnum.ReferenceNode
+
+    ctx = PluginContext(config=config, system=sys_obj)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
+    exporter.db = template_db
+
+    with patch.object(sys_obj, "get_supplemental_attributes", return_value=[mock_membership]):
+        exporter._add_component_memberships()
+
+    row_after = template_db._db.fetchone(
+        "SELECT is_enabled FROM t_collection WHERE collection_id=?", (coll_id,)
+    )
+    assert row_after is not None
+    assert row_after[0] == 1, "is_enabled must be 1 after _add_component_memberships"
+
+
+def test_add_component_memberships_reference_node_row_inserted(template_db):
+    """Region→Node 'Reference Node' membership row must exist in t_membership after export.
+
+    Exercises the full exporter path for the ReferenceNode collection (collection_id=211):
+    objects are resolved, the membership record is built and bulk-inserted, and the
+    collection is enabled so PLEXOS can read it.
+    """
+    from unittest.mock import Mock, patch
+
+    from r2x_plexos.models import PLEXOSRegion
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_obj = System(name="test")
+
+    region = PLEXOSRegion(name="RegB")
+    node = PLEXOSNode(name="NodeB")
+
+    template_db.add_object(ClassEnum.Region, "RegB", category="default")
+    template_db.add_object(ClassEnum.Node, "NodeB", category="default")
+
+    mock_membership = Mock()
+    mock_membership.parent_object = region
+    mock_membership.child_object = node
+    mock_membership.collection = CollectionEnum.ReferenceNode
+
+    ctx = PluginContext(config=config, system=sys_obj)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
+    exporter.db = template_db
+
+    with patch.object(sys_obj, "get_supplemental_attributes", return_value=[mock_membership]):
+        exporter._add_component_memberships()
+
+    region_id = template_db.get_object_id(ClassEnum.Region, "RegB")
+    node_id = template_db.get_object_id(ClassEnum.Node, "NodeB")
+    coll_id = template_db.get_collection_id(
+        CollectionEnum.ReferenceNode,
+        parent_class_enum=ClassEnum.Region,
+        child_class_enum=ClassEnum.Node,
+    )
+
+    count = template_db._db.fetchone(
+        "SELECT COUNT(*) FROM t_membership WHERE parent_object_id=? AND child_object_id=? AND collection_id=?",
+        (region_id, node_id, coll_id),
+    )
+    assert count is not None
+    assert count[0] == 1, "Exactly one Region→Node Reference Node membership row expected"
+
+
 def test_add_component_datafile_objects_db_none(caplog):
     """Test _add_component_datafile_objects handles db None - lines 527, 529."""
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)

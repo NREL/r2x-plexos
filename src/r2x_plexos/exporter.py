@@ -951,6 +951,17 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             return
 
         self.db.add_memberships_from_records(records)
+
+        # add_memberships_from_records (bulk path) does not enable the collections it
+        # writes into, unlike the single-item add_membership. PLEXOS only displays
+        # memberships whose collection has is_enabled=1, so we must set that flag.
+        used_collection_ids = {r["collection_id"] for r in records}
+        for coll_id in used_collection_ids:
+            self.db._db.execute(
+                "UPDATE t_collection SET is_enabled=1 WHERE collection_id=?",
+                (coll_id,),
+            )
+
         logger.success("Successfully added {} memberships.", len(records))
 
     def _add_component_datafile_objects(self) -> None:

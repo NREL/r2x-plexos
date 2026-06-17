@@ -59,6 +59,7 @@ FLOW_CLIP_MEMO_TEXT = "Setting fixed value of ±99999 to flows greater/less than
 # PLEXOS property aliases that are only meaningful for thermal/commit generators.
 # Source of truth lives on PLEXOSGenerator.THERMAL_ONLY_ALIASES — update it there.
 _THERMAL_ONLY_ALIASES: frozenset[str] = PLEXOSGenerator.THERMAL_ONLY_ALIASES
+_RENEWABLE_EXCLUDED_ALIASES: frozenset[str] = PLEXOSGenerator.RENEWABLE_EXCLUDED_ALIASES
 
 
 class PLEXOSExporter(Plugin[PLEXOSConfig]):
@@ -657,6 +658,9 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     group = self._get_category_group_name(comp)
                     if group and group.startswith("hydro"):
                         for alias in _THERMAL_ONLY_ALIASES:
+                            aliased_dict.pop(alias, None)
+                    if group and group.startswith("renewable"):
+                        for alias in _RENEWABLE_EXCLUDED_ALIASES:
                             aliased_dict.pop(alias, None)
 
                 if isinstance(comp, PLEXOSGenerator):

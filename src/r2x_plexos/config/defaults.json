@@ -102,11 +102,7 @@
     ],
     "PLEXOSGenerator.renewable-dispatch": [
       "units",
-      "commit",
-      "vom_charge",
-      "forced_outage_rate",
-      "maintenance_rate",
-      "mean_time_to_repair"
+      "commit"
     ],
     "PLEXOSGenerator.hydro-dispatch": [
       "units",

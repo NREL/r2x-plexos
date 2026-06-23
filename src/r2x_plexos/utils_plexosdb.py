@@ -54,7 +54,10 @@ def get_collection_enum(collection_name: str) -> CollectionEnum | None:
             collection_name,
         )
         return None
-    return CollectionEnum(collection_name)
+    # Look up by member name (not value): compat members have name != value
+    # (e.g. name="ReferenceNode", value="Reference Node") so CollectionEnum(name)
+    # would fail. __members__[name] is always correct.
+    return CollectionEnum.__members__[collection_name]
 
 
 @dataclass

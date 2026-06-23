@@ -176,6 +176,7 @@ class PropertySpecification:
                     "date_to": row.date_to,
                     "text": row.text,
                     "text_class_name": row.text_class_name,
+                    "memo": row.memo,
                 }
                 entries_list.append(row_dict)
             return entries_list

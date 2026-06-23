@@ -21,6 +21,7 @@ class PLEXOSObject(Component):
 
     model_config: ClassVar = {"protected_namespaces": ()}
     category: str | None = None
+    description: str | None = None
     object_id: int | None = None
     ext: dict[str, Any] | None = None
 

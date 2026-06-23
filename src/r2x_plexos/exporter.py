@@ -1,7 +1,6 @@
 """Export PLEXOS system to XML."""
 
 import os
-import sqlite3
 from datetime import datetime, timedelta
 from itertools import groupby
 from pathlib import Path
@@ -60,6 +59,7 @@ FLOW_CLIP_MEMO_TEXT = "Setting fixed value of ±99999 to flows greater/less than
 # PLEXOS property aliases that are only meaningful for thermal/commit generators.
 # Source of truth lives on PLEXOSGenerator.THERMAL_ONLY_ALIASES — update it there.
 _THERMAL_ONLY_ALIASES: frozenset[str] = PLEXOSGenerator.THERMAL_ONLY_ALIASES
+_RENEWABLE_EXCLUDED_ALIASES: frozenset[str] = PLEXOSGenerator.RENEWABLE_EXCLUDED_ALIASES
 
 
 class PLEXOSExporter(Plugin[PLEXOSConfig]):
@@ -365,6 +365,16 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     logger.debug(f"Component type: {component_type.__name__}, names: {names[:5]}")
                     raise
 
+            # Write object descriptions to t_object when present on the component model
+            class_id = self.db.get_class_id(class_enum)
+            for comp in components:
+                desc = getattr(comp, "description", None)
+                if isinstance(desc, str) and desc:
+                    self.db._db.execute(
+                        "UPDATE t_object SET description=? WHERE class_id=? AND name=?",
+                        (desc, class_id, comp.name),
+                    )
+
             self.db._db.execute(f"UPDATE t_class SET is_enabled=1 WHERE t_class.name='{class_enum}'")
             logger.debug(f"Enabled class: {class_enum.name}")
 
@@ -649,6 +659,9 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                     if group and group.startswith("hydro"):
                         for alias in _THERMAL_ONLY_ALIASES:
                             aliased_dict.pop(alias, None)
+                    if group and group.startswith("renewable"):
+                        for alias in _RENEWABLE_EXCLUDED_ALIASES:
+                            aliased_dict.pop(alias, None)
 
                 if isinstance(comp, PLEXOSGenerator):
                     has_heat_rate_base = (
@@ -678,14 +691,19 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                         continue
 
                     if isinstance(raw, (int, float, str, bool)):
-                        records.append(
-                            {
-                                "name": comp.name,
-                                "property": prop_name,
-                                "value": raw,
-                                "band": 1,
-                            }
-                        )
+                        rec: dict[str, Any] = {
+                            "name": comp.name,
+                            "property": prop_name,
+                            "value": raw,
+                            "band": 1,
+                        }
+                        if (
+                            prop_name in ("Max Flow", "Min Flow")
+                            and isinstance(raw, (int, float))
+                            and abs(raw) == 99999
+                        ):
+                            rec["+memo"] = FLOW_CLIP_MEMO_TEXT
+                        records.append(rec)
                         continue
 
                     if isinstance(raw, list):
@@ -695,6 +713,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             rec_value = rec.get("value")
                             if rec_value is None:
                                 continue
+                            memo_text = rec.get("memo")
                             records.append(
                                 {
                                     "name": comp.name,
@@ -709,11 +728,13 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                     "datafile_text": rec.get("datafile_text")
                                     or rec.get("datafile_name")
                                     or rec.get("text"),
+                                    **({"\u002bmemo": memo_text} if memo_text else {}),
                                 }
                             )
                         continue
 
                     if isinstance(raw, dict):
+                        memo_text = raw.get("memo")
                         records.append(
                             {
                                 "name": comp.name,
@@ -726,6 +747,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                 "datafile_text": raw.get("datafile_text")
                                 or raw.get("datafile_name")
                                 or raw.get("text"),
+                                **({"+memo": memo_text} if memo_text else {}),
                             }
                         )
                         continue
@@ -750,60 +772,62 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 collection=collection,
                 scenario=self.plexos_scenario,
             )
+            self._insert_property_memos(records, class_enum)
 
-        self._add_line_flow_clip_memo_entries()
+        self._add_component_description_memos()
 
-    def _add_line_flow_clip_memo_entries(self) -> None:
-        """Insert memo text for clipped Line flow properties.
-
-        Adds memo entries only to `Line` `Min Flow`/`Max Flow` data rows where
-        values are exactly -99999/99999, and only for lines that contain both
-        clipped values.
-        """
+    def _insert_property_memos(
+        self,
+        records: list[dict[str, Any]],
+        class_enum: ClassEnum,
+    ) -> None:
+        """Insert t_memo_data entries for property records carrying a '+memo' key."""
         if self.db is None:
             return
-
-        try:
-            # Apply memo text only to clipped flow bounds and preserve any existing memo rows.
-            self.db._db.execute(
+        memo_records = [(r["name"], r["property"], r["value"], r["+memo"]) for r in records if r.get("+memo")]
+        if not memo_records:
+            return
+        class_id = self.db.get_class_id(class_enum)
+        memo_inserts: list[tuple[int, str]] = []
+        for obj_name, prop_alias, value, memo_text in memo_records:
+            data_ids = self.db._db.fetchall(
                 """
-                WITH line_flow_rows AS (
-                    SELECT
-                        d.data_id,
-                        o.object_id,
-                        p.name AS property_name,
-                        CAST(d.value AS REAL) AS flow_value
-                    FROM t_data d
-                    INNER JOIN t_membership m ON d.membership_id = m.membership_id
-                    INNER JOIN t_object o ON m.child_object_id = o.object_id
-                    INNER JOIN t_class c ON o.class_id = c.class_id
-                    INNER JOIN t_property p ON d.property_id = p.property_id
-                    WHERE c.name = 'Line'
-                      AND p.name IN ('Min Flow', 'Max Flow')
-                ),
-                qualified_lines AS (
-                    SELECT object_id
-                    FROM line_flow_rows
-                    GROUP BY object_id
-                    HAVING MAX(CASE WHEN property_name = 'Max Flow' AND flow_value = 99999 THEN 1 ELSE 0 END) = 1
-                        OR MAX(CASE WHEN property_name = 'Min Flow' AND flow_value = -99999 THEN 1 ELSE 0 END) = 1
-                )
-                INSERT INTO t_memo_data (data_id, value)
-                SELECT lfr.data_id, ?
-                FROM line_flow_rows lfr
-                INNER JOIN qualified_lines ql ON ql.object_id = lfr.object_id
-                WHERE (
-                    (lfr.property_name = 'Max Flow' AND lfr.flow_value = 99999)
-                    OR (lfr.property_name = 'Min Flow' AND lfr.flow_value = -99999)
-                )
-                  AND NOT EXISTS (
-                      SELECT 1 FROM t_memo_data md WHERE md.data_id = lfr.data_id
-                  )
+                SELECT d.data_id
+                FROM t_data d
+                INNER JOIN t_membership m ON d.membership_id = m.membership_id
+                INNER JOIN t_object o ON m.child_object_id = o.object_id
+                INNER JOIN t_property p ON d.property_id = p.property_id
+                WHERE o.class_id = ? AND o.name = ? AND p.name = ? AND d.value = ?
                 """,
-                (FLOW_CLIP_MEMO_TEXT,),
+                (class_id, obj_name, prop_alias, value),
             )
-        except sqlite3.OperationalError as exc:
-            logger.debug("Skipping line flow memo insertion; t_memo_data may be unavailable: {}", exc)
+            for (data_id,) in data_ids:
+                memo_inserts.append((data_id, memo_text))
+        if memo_inserts:
+            self.db._db.executemany(
+                "INSERT OR IGNORE INTO t_memo_data (data_id, value) VALUES (?, ?)",
+                memo_inserts,
+            )
+
+    def _add_component_description_memos(self) -> None:
+        """Write t_object descriptions for all components that carry a non-null description."""
+        if self.db is None:
+            return
+        skip_types = {PLEXOSModel, PLEXOSHorizon, PLEXOSDatafile, PLEXOSMembership}
+        for component_type in self.system.get_component_types():
+            if component_type in skip_types:
+                continue
+            class_enum = PLEXOS_TYPE_MAP_INVERTED.get(cast(type[PLEXOSObject], component_type))
+            if not class_enum:
+                continue
+            class_id = self.db.get_class_id(class_enum)
+            for comp in self.system.get_components(component_type):
+                desc = getattr(comp, "description", None)
+                if isinstance(desc, str) and desc:
+                    self.db._db.execute(
+                        "UPDATE t_object SET description=? WHERE class_id=? AND name=?",
+                        (desc, class_id, comp.name),
+                    )
 
     def _bulk_resolve_object_ids(
         self, class_to_names: dict[ClassEnum, set[str]]
@@ -927,6 +951,17 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             return
 
         self.db.add_memberships_from_records(records)
+
+        # add_memberships_from_records (bulk path) does not enable the collections it
+        # writes into, unlike the single-item add_membership. PLEXOS only displays
+        # memberships whose collection has is_enabled=1, so we must set that flag.
+        used_collection_ids = {r["collection_id"] for r in records}
+        for coll_id in used_collection_ids:
+            self.db._db.execute(
+                "UPDATE t_collection SET is_enabled=1 WHERE collection_id=?",
+                (coll_id,),
+            )
+
         logger.success("Successfully added {} memberships.", len(records))
 
     def _add_component_datafile_objects(self) -> None:

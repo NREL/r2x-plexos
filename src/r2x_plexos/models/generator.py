@@ -19,6 +19,13 @@ class PLEXOSGenerator(PLEXOSObject):
         {"Fuel Price", "Start Cost", "Min Up Time", "Min Down Time"}
     )
 
+    # Properties that must never appear on renewable (wind/solar) generators.
+    # Consumed by the exporter to strip these aliases from renewable-group generators
+    # even when they carry non-default values (e.g. Mean Time to Repair defaults to 24).
+    RENEWABLE_EXCLUDED_ALIASES: ClassVar[frozenset[str]] = frozenset(
+        {"Min Stable Level", "Maintenance Rate", "Forced Outage Rate", "Mean Time to Repair"}
+    )
+
     acceptable_risk: Annotated[
         float | int,
         PLEXOSProperty(units="usd"),

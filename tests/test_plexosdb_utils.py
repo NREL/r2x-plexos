@@ -22,3 +22,20 @@ def test_plexosdb_get_collection_name(empty_db):
 def test_plexosdb_get_collection_enum():
     assert get_collection_enum("Generators") == CollectionEnum.Generators
     assert not get_collection_enum("Not")
+
+
+def test_get_collection_enum_reference_node_by_member_name():
+    """ReferenceNode must be accessible by member name via get_collection_enum.
+
+    CollectionEnum.ReferenceNode may have value != name on older plexosdb
+    releases (compat path): value='Reference Node', name='ReferenceNode'.
+    The lookup must use __members__[name], not CollectionEnum(value).
+    """
+    result = get_collection_enum("ReferenceNode")
+    assert result is not None
+    assert result is CollectionEnum.__members__["ReferenceNode"]
+
+
+def test_get_collection_enum_unknown_name_returns_none():
+    """get_collection_enum returns None for names not in CollectionEnum.__members__."""
+    assert get_collection_enum("DoesNotExistCollection") is None

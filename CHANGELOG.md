@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.0](https://github.com/NatLabRockies/r2x-plexos/compare/v0.1.5...v0.2.0) (2026-06-23)
+
+
+### 🚀 Features
+
+* add purchaser model for new loads translation ([#59](https://github.com/NatLabRockies/r2x-plexos/issues/59)) ([3eab1dc](https://github.com/NatLabRockies/r2x-plexos/commit/3eab1dcac120bc6e8866d4bff55aaa924f19108d))
+* resolve EI translation issues updating exporter codebase ([#65](https://github.com/NatLabRockies/r2x-plexos/issues/65)) ([d82ce2f](https://github.com/NatLabRockies/r2x-plexos/commit/d82ce2f9a04425f90a61b0a37aa15977daf8d0db))
+* update current code base to handle EI exporter changes ([#60](https://github.com/NatLabRockies/r2x-plexos/issues/60)) ([951aa55](https://github.com/NatLabRockies/r2x-plexos/commit/951aa5563f4aa4db5a8f41598b69757ad97ec78e))
+
+
+### 📦 Build
+
+* **deps-dev:** Bump pre-commit from 4.3.0 to 4.5.1 ([#57](https://github.com/NatLabRockies/r2x-plexos/issues/57)) ([0eb9181](https://github.com/NatLabRockies/r2x-plexos/commit/0eb91815008e553b881ba2302e4d50f83dbe79c9))
+* **deps-dev:** Bump ruff from 0.15.9 to 0.15.10 ([#58](https://github.com/NatLabRockies/r2x-plexos/issues/58)) ([2139218](https://github.com/NatLabRockies/r2x-plexos/commit/213921828bac6ec14f3ed6f67c6d73f48a440751))
+* **deps:** Bump actions/labeler from 6.0.1 to 6.1.0 ([#61](https://github.com/NatLabRockies/r2x-plexos/issues/61)) ([773d4be](https://github.com/NatLabRockies/r2x-plexos/commit/773d4be2da11a457b467fa04a07fc91aa8379517))
+* **deps:** Bump actions/upload-artifact from 7.0.0 to 7.0.1 ([#54](https://github.com/NatLabRockies/r2x-plexos/issues/54)) ([426556e](https://github.com/NatLabRockies/r2x-plexos/commit/426556e4d3383302c7b9b66454d980379eba67fd))
+* **deps:** Bump codecov/codecov-action from 6 to 7 ([#64](https://github.com/NatLabRockies/r2x-plexos/issues/64)) ([af356ea](https://github.com/NatLabRockies/r2x-plexos/commit/af356ea9f3435b5b9e6c81cfbeca12e86b9a4f63))
+* **deps:** Bump googleapis/release-please-action ([b047a61](https://github.com/NatLabRockies/r2x-plexos/commit/b047a614bc916360eab916bcbfc9ad457db789c9))
+* **deps:** Bump googleapis/release-please-action from c3fc4de07084f75a2b61a5b933069bda6edf3d5c to 16a9c90856f42705d54a6fda1823352bdc62cf38 ([#55](https://github.com/NatLabRockies/r2x-plexos/issues/55)) ([b047a61](https://github.com/NatLabRockies/r2x-plexos/commit/b047a614bc916360eab916bcbfc9ad457db789c9))
+* **deps:** Bump pypa/gh-action-pypi-publish from 1.13.0 to 1.14.0 ([#56](https://github.com/NatLabRockies/r2x-plexos/issues/56)) ([1d7fdef](https://github.com/NatLabRockies/r2x-plexos/commit/1d7fdefd7b734e5d7b73e4582c0fc0d14407629e))
+
 ## [0.1.5](https://github.com/NatLabRockies/r2x-plexos/compare/v0.1.4...v0.1.5) (2026-04-07)
 
 

@@ -145,7 +145,8 @@
       "fixed_load"
     ],
     "PLEXOSNode": [
-      "units"
+      "units",
+      "load_participation_factor"
     ],
     "PLEXOSZone": [
       "units"

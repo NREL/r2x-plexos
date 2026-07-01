@@ -883,7 +883,22 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             if not m.parent_object or not m.child_object or not m.collection:
                 continue
             parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(m.parent_object))
+            if parent_class is None:
+                # After JSON serialization/deserialization the specific subtype is lost and
+                # the object comes back as PLEXOSObject (base class). Fall back to a UUID
+                # lookup in the system to recover the real type.
+                try:
+                    actual = self.system.get_component_by_uuid(m.parent_object.uuid)
+                    parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(actual))
+                except Exception:
+                    pass
             child_class = PLEXOS_TYPE_MAP_INVERTED.get(type(m.child_object))
+            if child_class is None:
+                try:
+                    actual = self.system.get_component_by_uuid(m.child_object.uuid)
+                    child_class = PLEXOS_TYPE_MAP_INVERTED.get(type(actual))
+                except Exception:
+                    pass
             if not parent_class or not child_class:
                 continue
             if parent_class in (ClassEnum.Model, ClassEnum.Horizon) or child_class in (

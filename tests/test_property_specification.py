@@ -129,6 +129,116 @@ def test_get_filepath_and_references():
     )
     assert prop_file.get_filepath() == "file.csv"
 
+
+def test_validate_enum_value_integer_passes():
+    spec = PropertySpecification(is_enum=True)
+    spec._validate_enum_value(3)  # integer, should not raise
+
+
+def test_validate_enum_value_whole_float_passes():
+    spec = PropertySpecification(is_enum=True)
+    spec._validate_enum_value(3.0)  # .is_integer() is True, should not raise
+
+
+def test_validate_enum_value_non_integer_float_raises():
+    spec = PropertySpecification(is_enum=True)
+    with pytest.raises(ValueError, match="Enum field requires whole number"):
+        spec._validate_enum_value(3.5)
+
+
+def test_validate_bands_single_band_ok():
+    spec = PropertySpecification(allow_bands=False, is_validator=True)
+    prop = PLEXOSPropertyValue.from_records([{"band": 1, "value": 10}])
+    spec._validate_bands(prop)  # should not raise
+
+
+def test_validate_bands_multi_band_raises():
+    spec = PropertySpecification(allow_bands=False, is_validator=True)
+    prop = PLEXOSPropertyValue.from_records([{"band": 1, "value": 10}, {"band": 2, "value": 20}])
+    with pytest.raises(ValueError, match="Multi-band"):
+        spec._validate_bands(prop)
+
+
+def test_apply_units_to_dict_without_units():
+    spec = PropertySpecification(units="MW")
+    d: dict = {"value": 100}
+    spec._apply_units(d)
+    assert d["units"] == "MW"
+
+
+def test_apply_units_to_dict_with_existing_units():
+    spec = PropertySpecification(units="MW")
+    d: dict = {"value": 100, "units": "kW"}
+    spec._apply_units(d)
+    assert d["units"] == "kW"  # should NOT override
+
+
+def test_apply_units_to_plexos_property_value_without_units():
+    spec = PropertySpecification(units="MW")
+    prop = PLEXOSPropertyValue.from_records([{"value": 100}])
+    prop.units = None  # ensure no units set
+    spec._apply_units(prop)
+    assert prop.units == "MW"
+
+
+def test_apply_units_no_units_configured_is_noop():
+    spec = PropertySpecification(units=None)
+    d: dict = {"value": 100}
+    spec._apply_units(d)
+    assert "units" not in d
+
+
+def test_validate_value_list_input():
+    """A list of record dicts should be converted to PLEXOSPropertyValue."""
+    from typing import Annotated
+
+    from pydantic import BaseModel
+
+    class M(BaseModel):
+        val: Annotated[float | int, PropertySpecification(units="MW")]
+
+    records = [{"value": 50, "scenario": "Base"}]
+    m = M(val=records)  # type: ignore[arg-type]
+    assert isinstance(m.val, PLEXOSPropertyValue)
+
+
+def test_validate_value_unsupported_type_raises():
+    """Passing an unsupported type raises TypeError (converted to ValidationError by Pydantic)."""
+    from typing import Annotated
+
+    from pydantic import BaseModel, ValidationError
+
+    class M(BaseModel):
+        val: Annotated[float | int, PropertySpecification()]
+
+    with pytest.raises(ValidationError):
+        M(val=object())  # type: ignore[arg-type]
+
+
+def test_property_spec_enum_with_integer_via_pydantic():
+    """is_enum=True with a whole-number float passes validation."""
+    model = BandedModel(allowed=100.0, no_bands=2.0, enum_value=2)
+    assert model.enum_value == 2
+
+
+def test_property_spec_helper_returns_specification():
+    from r2x_plexos.models.property_specification import _property_spec
+
+    spec = _property_spec(units="MW", allow_bands=True, is_enum=False)
+    assert isinstance(spec, PropertySpecification)
+    assert spec.units == "MW"
+    assert spec.allow_bands is True
+    assert spec.is_enum is False
+
+
+def test_property_spec_helper_defaults():
+    from r2x_plexos.models.property_specification import _property_spec
+
+    spec = _property_spec()
+    assert spec.units is None
+    assert spec.allow_bands is True
+    assert spec.is_enum is False
+
     prop_var = PLEXOSPropertyValue.from_records(
         [
             {"value": 2, "variable_name": "var1", "variable_id": 42},

@@ -179,6 +179,44 @@ def test_determine_collection_with_unregistered_child():
     assert collection_enum is None
 
 
+def test_register_component_and_retrieve():
+    """register_component adds a mapping that get_class_enum can retrieve."""
+
+    class DummyComponent:
+        pass
+
+    dummy_enum = ClassEnum.Fuel  # reuse any existing enum as a stand-in
+    PLEXOSComponentRegistry.register_component(DummyComponent, dummy_enum)
+
+    assert PLEXOSComponentRegistry.get_class_enum(DummyComponent) == dummy_enum
+
+    # Clean up to avoid polluting other tests
+    PLEXOSComponentRegistry._class_registry.pop(DummyComponent, None)
+
+
+def test_register_collection_and_retrieve():
+    """register_collection adds a mapping that get_collection_enum can retrieve."""
+    parent_enum = ClassEnum.Fuel
+    child_enum = ClassEnum.Node
+    coll_enum = CollectionEnum.Generators  # arbitrary stand-in value
+
+    PLEXOSComponentRegistry.register_collection(parent_enum, child_enum, coll_enum)
+
+    result = PLEXOSComponentRegistry.get_collection_enum(parent_enum, child_enum)
+    assert result == coll_enum
+
+    # Clean up
+    PLEXOSComponentRegistry._collection_registry.pop((parent_enum, child_enum), None)
+
+
+def test_get_collection_enum_purchasers_fallback():
+    """System → Purchaser should resolve even without an explicit 'Purchasers' CollectionEnum."""
+
+    result = PLEXOSComponentRegistry.get_collection_enum(ClassEnum.System, ClassEnum.Purchaser)
+    # May return PURCHASER_COLLECTION_ENUM or a normal CollectionEnum, just must not be None
+    assert result is not None
+
+
 def test_register_component_dynamically():
     """Test dynamically registering a new component.
 

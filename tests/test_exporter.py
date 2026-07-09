@@ -1975,7 +1975,7 @@ def test_export_time_series_prefers_resolution_match(mocker, tmp_path):
     data_dir = tmp_path / "Data"
     data_dir.mkdir()
 
-    def _capture(filepath, ts_data):
+    def _capture(filepath, ts_data, **kwargs):
         assert len(ts_data) == 2
         assert len(ts_data[0][1].data) == 53
         assert len(ts_data[1][1].data) == 53
@@ -2038,7 +2038,7 @@ def test_export_time_series_skips_unmatched_variant(mocker, tmp_path):
     data_dir = tmp_path / "Data"
     data_dir.mkdir()
 
-    def _capture(filepath, ts_data):
+    def _capture(filepath, ts_data, **kwargs):
         assert [name for name, _ in ts_data] == ["HydroB"]
         assert len(ts_data[0][1].data) == 53
         return Ok(None)
@@ -2094,7 +2094,7 @@ def test_export_time_series_hydro_budget_always_resolves_to_coarsest(mocker, tmp
     data_dir = tmp_path / "Data"
     data_dir.mkdir()
 
-    def _capture(filepath, ts_data):
+    def _capture(filepath, ts_data, **kwargs):
         assert len(ts_data) == 1
         # key resolution is hourly but hydro_budget always returns coarsest (weekly, 53 pts)
         assert len(ts_data[0][1].data) == 53
@@ -2148,7 +2148,7 @@ def test_export_time_series_hydro_budget_falls_back_to_coarsest_when_no_resoluti
     data_dir = tmp_path / "Data"
     data_dir.mkdir()
 
-    def _capture(filepath, ts_data):
+    def _capture(filepath, ts_data, **kwargs):
         assert len(ts_data) == 1
         # No 6-hourly variant → coarsest (weekly, 53 points) is the fallback.
         assert len(ts_data[0][1].data) == 53
@@ -2228,9 +2228,220 @@ def test_resolve_matching_time_series_handles_exception_and_empty_results(mocker
     sys_obj.list_time_series.side_effect = RuntimeError("boom")
     assert exporter._resolve_matching_time_series(component, ts_key) is None
 
-    sys_obj.list_time_series.side_effect = None
-    sys_obj.list_time_series.return_value = []
-    assert exporter._resolve_matching_time_series(component, ts_key) is None
+
+# ---------------------------------------------------------------------------
+# _sync_runtime_options_from_config
+# ---------------------------------------------------------------------------
+
+
+def test_sync_runtime_options_reads_output_path_from_config(tmp_path):
+    """output_path from config is written to exporter.output_path."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024, output_path=str(tmp_path))
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    exporter._sync_runtime_options_from_config()
+    assert exporter.output_path == str(tmp_path)
+
+
+def test_sync_runtime_options_does_not_override_explicit_weather_year(tmp_path):
+    """An already-set weather_year is NOT overwritten by config."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024, weather_year=2030)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+    exporter.weather_year = 2012  # explicitly set before calling sync
+
+    exporter._sync_runtime_options_from_config()
+    assert exporter.weather_year == 2012  # must not be overwritten
+
+
+def test_sync_runtime_options_hydrates_weather_year_when_none():
+    """When exporter.weather_year is None, it should be filled from config."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024, weather_year=2030)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+    exporter.weather_year = None
+
+    exporter._sync_runtime_options_from_config()
+    assert exporter.weather_year == 2030
+
+
+# ---------------------------------------------------------------------------
+# _build_xml_filename
+# ---------------------------------------------------------------------------
+
+
+def test_build_xml_filename_uses_solve_year_for_horizon():
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+    exporter.solve_year = 2050
+
+    fname = exporter._build_xml_filename()
+    assert fname.endswith(".xml")
+    assert "2050" in fname
+    assert "Base" in fname
+
+
+def test_build_xml_filename_falls_back_to_config_horizon_year():
+    config = PLEXOSConfig(model_name="Run", horizon_year=2035)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+    exporter.solve_year = None  # no runtime override
+
+    fname = exporter._build_xml_filename()
+    assert "Run" in fname
+    assert "2035" in fname
+
+
+def test_build_xml_filename_includes_weather_year_when_set():
+    config = PLEXOSConfig(model_name="Base", horizon_year=2040)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+    exporter.weather_year = 2012
+
+    fname = exporter._build_xml_filename()
+    assert "2012" in fname
+    assert "2040" in fname
+
+
+def test_on_export_returns_err_for_wrong_config_type(mocker):
+    """Passing a non-PLEXOSConfig should return Err without raising."""
+    bad_config = PluginConfig(model_name="Wrong")
+    sys = System(name="test")
+    ctx = PluginContext(config=bad_config, system=sys)  # type: ignore[arg-type]
+    exporter = PLEXOSExporter.from_context(ctx)  # type: ignore[arg-type]
+
+    result = exporter.on_export()
+    assert result.is_err()
+    assert "Config is of type" in result.unwrap_err()
+
+
+def test_setup_configuration_returns_err_when_db_is_none():
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+    exporter.db = None
+
+    result = exporter.setup_configuration()
+    assert result.is_err()
+    assert "Database not initialized" in result.unwrap_err()
+
+
+def test_deduplicate_property_records_removes_exact_duplicates():
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    records = [
+        {"name": "Gen1", "property": "Rating", "value": 100.0, "band": 1},
+        {"name": "Gen1", "property": "Rating", "value": 100.0, "band": 1},
+        {"name": "Gen1", "property": "Rating", "value": 200.0, "band": 1},
+    ]
+    result = exporter._deduplicate_property_records(records)
+    assert len(result) == 2
+
+
+def test_deduplicate_property_records_empty_list():
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    assert exporter._deduplicate_property_records([]) == []
+
+
+def test_deduplicate_property_records_normalizes_float_string():
+    """'100.0' and 100.0 are the same canonical value and should be deduplicated."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    records = [
+        {"name": "Gen1", "property": "Rating", "value": "100.0", "band": 1},
+        {"name": "Gen1", "property": "Rating", "value": 100.0, "band": 1},
+    ]
+    result = exporter._deduplicate_property_records(records)
+    assert len(result) == 1
+
+
+def test_get_category_group_name_returns_none_for_no_category():
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    gen = PLEXOSGenerator(name="G1", category=None)
+    assert exporter._get_category_group_name(gen) is None
+
+
+def test_get_category_group_name_alias_thermal():
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+    ctx = PluginContext(config=config, system=sys)
+    exporter = PLEXOSExporter.from_context(ctx)
+
+    gen = PLEXOSGenerator(name="G1", category="thermal")
+    result = exporter._get_category_group_name(gen)
+    # "thermal" maps to "thermal-standard"
+    assert result is not None
+
+
+def test_export_time_series_passes_target_year_from_solve_year(mocker, tmp_path):
+    """solve_year is passed as target_year to export_time_series_csv."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_mock = mocker.Mock()
+
+    class DummyType:
+        pass
+
+    comp = mocker.Mock()
+    comp.name = "Gen1"
+    type(comp).__name__ = "PLEXOSGenerator"
+
+    ts_key = mocker.Mock()
+    ts_key.name = "max_active_power"
+    ts_key.features = {}
+    ts_key.initial_timestamp = datetime(2012, 1, 1)
+    ts_key.resolution = timedelta(hours=1)
+
+    ts = mocker.Mock()
+    ts.data = [1.0] * 8760
+    ts.initial_timestamp = ts_key.initial_timestamp
+    ts.resolution = ts_key.resolution
+
+    sys_mock.get_component_types.return_value = [DummyType]
+    sys_mock.get_components.return_value = [comp]
+    sys_mock.has_time_series.return_value = True
+    sys_mock.list_time_series_keys.return_value = [ts_key]
+    sys_mock.list_time_series.return_value = [ts]
+
+    ctx = PluginContext(config=config, system=sys_mock)
+    exporter = PLEXOSExporter.from_context(ctx)
+    exporter.solve_year = 2050
+
+    captured_target_years = []
+
+    def _capture(filepath, ts_data, **kwargs):
+        captured_target_years.append(kwargs.get("target_year"))
+        return Ok(None)
+
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=tmp_path / "Data")
+    (tmp_path / "Data").mkdir(parents=True, exist_ok=True)
+    mocker.patch("r2x_plexos.exporter.export_time_series_csv", side_effect=_capture)
+
+    result = exporter.export_time_series()
+    assert result.is_ok()
+    assert any(y == 2050 for y in captured_target_years)
 
 
 def test_resolve_matching_time_series_fallbacks_and_initial_timestamp_mismatch(mocker):

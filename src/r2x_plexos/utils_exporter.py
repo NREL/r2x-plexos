@@ -69,13 +69,32 @@ def format_datetime(dt: datetime) -> str:
 def export_time_series_csv(
     filepath: Path,
     time_series_data: list[tuple[str, SingleTimeSeries]],
+    target_year: int | None = None,
 ) -> Result[None, Exception]:
-    """Export time series to CSV in DateTime,Component format."""
+    """Export time series to CSV in DateTime,Component format.
+
+    Parameters
+    ----------
+    filepath : Path
+        Destination CSV file path.
+    time_series_data : list[tuple[str, SingleTimeSeries]]
+        Pairs of (component_name, time_series) to export as columns.
+    target_year : int | None, optional
+        When provided, replaces the year component of every timestamp so that
+        the exported CSV reflects the simulation horizon year instead of the
+        underlying weather/source year stored in the time series.
+    """
     if not time_series_data:
         raise ValueError("No time series data provided")
 
     _, first_ts = time_series_data[0]
     initial_timestamp = first_ts.initial_timestamp
+    if target_year is not None:
+        try:
+            initial_timestamp = initial_timestamp.replace(year=target_year)
+        except ValueError:
+            # e.g. Feb 29 does not exist in target_year — clamp to Feb 28
+            initial_timestamp = initial_timestamp.replace(year=target_year, day=28)
     resolution = first_ts.resolution
     data_length = len(first_ts.data)
 

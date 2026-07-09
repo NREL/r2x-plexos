@@ -200,6 +200,99 @@ def test_generate_csv_filename_ignores_none_weather_year():
     assert result == "PLEXOSDemand_load_Base_2023.csv"
 
 
+def test_format_datetime_basic():
+    dt = datetime(2024, 6, 15, 12, 30, 0)
+    assert format_datetime(dt) == "2024-06-15T12:30:00"
+
+
+def test_format_datetime_midnight():
+    dt = datetime(2050, 1, 1, 0, 0, 0)
+    assert format_datetime(dt) == "2050-01-01T00:00:00"
+
+
+def test_export_time_series_csv_target_year_replaces_year(tmp_path: Path):
+    """target_year shifts all timestamps to the specified year."""
+    data = [1.0, 2.0, 3.0]
+    ts = SingleTimeSeries.from_array(data, "ts", datetime(2012, 3, 1), resolution=timedelta(hours=1))
+
+    fp = tmp_path / "out.csv"
+    result = export_time_series_csv(fp, [("comp", ts)], target_year=2050)
+    assert result.is_ok()
+
+    lines = fp.read_text().strip().splitlines()
+    # Header + 3 rows
+    assert len(lines) == 4
+    # All timestamps should be in 2050
+    for line in lines[1:]:
+        assert line.startswith("2050-")
+
+
+def test_export_time_series_csv_target_year_feb29_clamps_to_feb28(tmp_path: Path):
+    """Feb 29 in a leap-year source is clamped to Feb 28 when target is non-leap."""
+    data = [1.0, 2.0, 3.0]
+    ts = SingleTimeSeries.from_array(data, "ts", datetime(2012, 2, 29), resolution=timedelta(hours=1))
+
+    fp = tmp_path / "feb29.csv"
+    # 2050 is not a leap year
+    result = export_time_series_csv(fp, [("comp", ts)], target_year=2050)
+    assert result.is_ok()
+
+    lines = fp.read_text().strip().splitlines()
+    assert "2050-02-28" in lines[1]
+
+
+def test_export_time_series_csv_no_target_year_preserves_original(tmp_path: Path):
+    """Without target_year, original timestamps are preserved unchanged."""
+    data = [1.0, 2.0, 3.0]
+    ts = SingleTimeSeries.from_array(data, "ts", datetime(2012, 6, 1), resolution=timedelta(hours=1))
+
+    fp = tmp_path / "unchanged.csv"
+    result = export_time_series_csv(fp, [("comp", ts)])
+    assert result.is_ok()
+
+    lines = fp.read_text().strip().splitlines()
+    assert lines[1].startswith("2012-")
+
+
+def test_get_hydro_budget_property_name_hour():
+    assert get_hydro_budget_property_name(timedelta(hours=1)) == "Max Energy Hour"
+
+
+def test_get_hydro_budget_property_name_day():
+    assert get_hydro_budget_property_name(timedelta(hours=6)) == "Max Energy Day"
+    assert get_hydro_budget_property_name(timedelta(days=1)) == "Max Energy Day"
+
+
+def test_get_hydro_budget_property_name_week():
+    assert get_hydro_budget_property_name(timedelta(days=3)) == "Max Energy Week"
+    assert get_hydro_budget_property_name(timedelta(days=7)) == "Max Energy Week"
+
+
+def test_get_hydro_budget_property_name_month():
+    assert get_hydro_budget_property_name(timedelta(days=14)) == "Max Energy Month"
+    assert get_hydro_budget_property_name(timedelta(days=31)) == "Max Energy Month"
+
+
+def test_get_hydro_budget_property_name_year():
+    assert get_hydro_budget_property_name(timedelta(days=32)) == "Max Energy Year"
+    assert get_hydro_budget_property_name(timedelta(days=365)) == "Max Energy Year"
+
+
+def test_build_metadata_suffix_deduplicates_equal_years():
+    from r2x_plexos.utils_exporter import build_metadata_suffix
+
+    # When weather_year == horizon_year the suffix should only contain it once
+    meta = {"model_name": "Base", "weather_year": 2024, "horizon_year": 2024}
+    suffix = build_metadata_suffix(meta)
+    assert suffix.count("2024") == 1
+
+
+def test_build_metadata_suffix_empty_returns_default():
+    from r2x_plexos.utils_exporter import build_metadata_suffix
+
+    assert build_metadata_suffix({}) == "default"
+
+
 def test_build_metadata_suffix_skips_none_values():
     """Suffix helper should skip None values even if key is present."""
     suffix = build_metadata_suffix({"model_name": "EI_PCM_2023", "weather_year": None, "horizon_year": 2023})

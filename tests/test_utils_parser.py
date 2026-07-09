@@ -204,3 +204,50 @@ def test_apply_action_various(base, new, action, expected):
 
 def test_apply_action_divide_by_zero_returns_new():
     assert apply_action(10.0, 0.0, "/") == 0.0
+
+
+def test_trim_timeseries_to_horizon_happy_path(trim_ts):
+    """Trimming to a sub-range returns correct slice with updated initial_timestamp."""
+    start = trim_ts.initial_timestamp + timedelta(hours=1)
+    end = trim_ts.initial_timestamp + timedelta(hours=3)  # slice [1:3] → 2 elements
+    result = trim_timeseries_to_horizon(trim_ts, start, end)
+
+    assert result.initial_timestamp == start
+    assert len(result.data) == 2
+    assert float(result.data[0]) == pytest.approx(2.0)
+    assert float(result.data[1]) == pytest.approx(3.0)
+
+
+def test_trim_timeseries_to_horizon_full_range(trim_ts):
+    """Trimming to the exact full range returns a copy with the same data."""
+    start = trim_ts.initial_timestamp
+    end = trim_ts.initial_timestamp + timedelta(hours=3)
+    result = trim_timeseries_to_horizon(trim_ts, start, end)
+
+    assert result.initial_timestamp == start
+    assert len(result.data) == 3
+
+
+def test_trim_timeseries_preserves_name_and_resolution(trim_ts):
+    start = trim_ts.initial_timestamp
+    end = trim_ts.initial_timestamp + timedelta(hours=2)
+    result = trim_timeseries_to_horizon(trim_ts, start, end)
+
+    assert result.name == trim_ts.name
+    assert result.resolution == trim_ts.resolution
+
+
+def test_apply_action_to_timeseries_unicode_multiply(sample_ts):
+    """The × unicode alias must be treated the same as '*'."""  # noqa: RUF002
+    result = apply_action_to_timeseries(sample_ts, "×", 2.0)  # noqa: RUF001
+    assert list(result.data) == [2.0, 4.0, 6.0, 8.0, 10.0]
+
+
+def test_apply_action_to_timeseries_x_alias(sample_ts):
+    """'x' (lowercase) must be treated the same as '*'."""
+    result = apply_action_to_timeseries(sample_ts, "x", 2.0)
+    assert list(result.data) == [2.0, 4.0, 6.0, 8.0, 10.0]
+
+
+def test_apply_action_unicode_multiply():
+    assert apply_action(10.0, 3.0, "×") == 30.0  # noqa: RUF001

@@ -1444,7 +1444,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 logger.debug("No time series data collected for group {}, skipping CSV.", field_name)
                 continue
 
-            result = export_time_series_csv(filepath, time_series_data)
+            target_year = self.solve_year or getattr(self.config, "horizon_year", None)
+            result = export_time_series_csv(filepath, time_series_data, target_year=target_year)
 
             if result.is_err():
                 assert isinstance(result, Err)

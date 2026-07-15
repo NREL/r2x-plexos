@@ -12,6 +12,32 @@ result = exporter.export()
 assert result.is_ok()
 ```
 
+## Select a PLEXOS Version Template
+
+The exporter initialises the PLEXOS database from a master XML template bundled
+with the `plexosdb` package.  Use the `template` field in `PLEXOSConfig` to pick
+the target PLEXOS version:
+
+| Key | PLEXOS version | File (from `plexosdb`) |
+|---|---|---|
+| `"PLEXOS9.0"` | 9.x (9.2R6) | `master_9.2R6_btu.xml` |
+| `"PLEXOS10.0"` | 10.x (10.0R2) | `master_10.0R2_btu.xml` |
+| `"PLEXOS11.0"` | 11.x (11.0R4) | `master_11.0R4_btu.xml` |
+| `"PLEXOS12.0"` | 12.x (12.0R3) | `master_12.0R3_btu.xml` |
+
+When `template` is omitted the default is `"PLEXOS10.0"`.
+
+```python
+# Target PLEXOS 9
+config = PLEXOSConfig(model_name="Base", horizon_year=2024, template="PLEXOS9.0")
+
+# Target PLEXOS 12
+config = PLEXOSConfig(model_name="Base", horizon_year=2024, template="PLEXOS12.0")
+
+# Use a custom XML file on disk
+config = PLEXOSConfig(model_name="Base", horizon_year=2024, template="/path/to/my_template.xml")
+```
+
 ## Export with Custom Configuration
 
 ```python

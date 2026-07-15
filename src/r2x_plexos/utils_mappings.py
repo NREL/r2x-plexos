@@ -75,6 +75,11 @@ CONFIG_CLASS_MAP = {
 GENERATOR_TS_PROPERTY_MAP: dict[str, str] = {
     "max_active_power": "Rating",
     "hydro_budget": "Max Energy Day",
+    "max_energy_hour": "Max Energy Hour",
+    "max_energy_day": "Max Energy Day",
+    "max_energy_week": "Max Energy Week",
+    "max_energy_month": "Max Energy Month",
+    "max_energy_year": "Max Energy Year",
 }
 
 STORAGE_TS_PROPERTY_MAP: dict[str, str] = {

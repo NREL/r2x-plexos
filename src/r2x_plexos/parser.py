@@ -54,7 +54,6 @@ __version__ = version("r2x_plexos")
 SCENARIO_ORDER = files("r2x_plexos.sql").joinpath("scenario_read_order.sql").read_text(encoding="utf-8-sig")
 HYDRO_TS_NAME_MAP: dict[str, str] = {
     "fixed_load": "max_active_power",
-    "max_energy_day": "hydro_budget",
     "min_provision": "requirement",
     "load_subtracter": "max_active_power",
     "rating": "max_active_power",

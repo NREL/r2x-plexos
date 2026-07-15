@@ -79,13 +79,9 @@ def template_db():
     """Minimal PlexosDB loaded from the bundled master template."""
     import pathlib
 
-    template_path = (
-        pathlib.Path(__file__).resolve().parent.parent
-        / "src"
-        / "r2x_plexos"
-        / "config"
-        / "master_10.0R2_btu.xml"
-    )
+    import plexosdb
+
+    template_path = pathlib.Path(plexosdb.__file__).parent / "config" / "master_10.0R2_btu.xml"
     if not template_path.exists():
         pytest.skip("Template XML not found")
     return PlexosDB.from_xml(xml_path=template_path)

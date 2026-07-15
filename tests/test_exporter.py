@@ -1716,7 +1716,7 @@ def test_resolve_template_path_default():
 
 
 def test_resolve_template_path_version_key_plexos92():
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024, template="PLEXOS9.2")
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024, template="PLEXOS9.0")
     sys = System(name="test")
 
     ctx = PluginContext(config=config, system=sys)

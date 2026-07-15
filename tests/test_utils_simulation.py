@@ -2,7 +2,9 @@
 
 import typing
 from datetime import datetime
+from pathlib import Path
 
+import plexosdb
 import pytest
 from plexosdb import ClassEnum, PlexosDB
 
@@ -16,6 +18,7 @@ from r2x_plexos.models.simulation_config import (
     PLEXOSSTSchedule,
     PLEXOSTransmission,
 )
+from r2x_plexos.plugin_config import PLEXOSConfig
 from r2x_plexos.utils_plexosdb import validate_simulation_attribute
 from r2x_plexos.utils_simulation import (
     build_plexos_simulation,
@@ -29,6 +32,7 @@ from r2x_plexos.utils_simulation import (
 )
 
 FILE_NAME = "master_10.0R2_btu.xml"
+_XML_TEMPLATE_DIR = Path(plexosdb.__file__).parent / "config"
 
 
 def test_datetime_to_ole_date():
@@ -421,10 +425,8 @@ def test_convert_simulation_config_skips_none_values():
 
 def test_validate_simulation_config_success(tmp_path):
     """Test successful validation of simulation config - line 535."""
-    from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     perf = PLEXOSPerformance(name="TestPerf", solver=4)
@@ -435,10 +437,8 @@ def test_validate_simulation_config_success(tmp_path):
 
 def test_validate_simulation_config_invalid_attribute(tmp_path):
     """Test validation fails with invalid attribute."""
-    from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     # Create a config with an invalid attribute name
@@ -454,10 +454,8 @@ def test_validate_simulation_config_invalid_attribute(tmp_path):
 
 def test_ingest_simulation_config_success(tmp_path):
     """Test ingesting simulation config to database - lines 655, 657."""
-    from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     perf = PLEXOSPerformance(name="TestPerformance", solver=4, mip_relative_gap=0.01)
@@ -479,10 +477,7 @@ def test_ingest_simulation_config_without_name():
     """Test ingesting config without name fails - line 664."""
     from unittest.mock import Mock
 
-    from r2x_plexos import PLEXOSConfig
-
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     # Create a mock object that bypasses Pydantic validation
@@ -500,10 +495,8 @@ def test_ingest_simulation_config_without_name():
 
 def test_ingest_simulation_to_plexosdb_success(tmp_path):
     """Test full simulation ingestion - lines 804, 822, 826-827."""
-    from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     # Build simple simulation with a model
@@ -547,10 +540,8 @@ def test_ingest_simulation_to_plexosdb_success(tmp_path):
 
 def test_ingest_simulation_with_configs(tmp_path):
     """Test ingestion with simulation configurations - lines 834-838."""
-    from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     # Build simulation with configs
@@ -608,10 +599,8 @@ def test_build_simulation_with_simulation_configs():
 
 def test_ingest_with_unknown_config_type(tmp_path):
     """Test ingestion with unknown simulation config type - warning path."""
-    from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     sim_config = {"horizon_year": 2012, "resolution": "1D"}
@@ -635,10 +624,8 @@ def test_ingest_with_unknown_config_type(tmp_path):
 
 def test_ingest_simulation_without_configs(tmp_path):
     """Test ingestion without any simulation configs."""
-    from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     sim_config = {"horizon_year": 2012, "resolution": "1D"}
@@ -809,12 +796,10 @@ def test_build_static_simulation_rewrites_names_for_weather_year():
 
 def test_ingest_simulation_to_plexosdb_adds_model_attributes(tmp_path):
     """Test that model attributes are written to the DB during simulation ingestion."""
-    from r2x_plexos import PLEXOSConfig
     from r2x_plexos.models import PLEXOSHorizon, PLEXOSModel
     from r2x_plexos.utils_simulation import SimulationConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     model = PLEXOSModel(
@@ -866,10 +851,8 @@ def test_shift_ole_date_to_year_non_leap_non_feb29_unchanged():
 
 def test_ingest_static_simulation_sets_base_diagnose_defaults(tmp_path):
     """Ensure base_diagnose has default diagnostic checkboxes enabled."""
-    from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     static_model_defaults = PLEXOSConfig.load_static_models()
@@ -918,8 +901,7 @@ def test_ingest_static_simulation_sets_base_transmission_defaults(tmp_path):
     """Ensure base_transmission has requested Transmission defaults enabled."""
     from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     static_model_defaults = PLEXOSConfig.load_static_models()
@@ -961,8 +943,7 @@ def test_ingest_static_simulation_sets_base_performance_mip_gap_to_one_percent(t
     """Ensure base_performance uses 1% MIP relative gap by default."""
     from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     static_model_defaults = PLEXOSConfig.load_static_models()
@@ -989,8 +970,7 @@ def test_ingest_static_simulation_overwrites_existing_performance_mip_gap(tmp_pa
     """Ensure an existing non-1% MIP gap is forced to 0.01 for base_performance."""
     from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     if not db.check_object_exists(ClassEnum.Performance, "base_performance"):
@@ -1038,8 +1018,7 @@ def test_ingest_static_simulation_overwrites_base_mip_to_integer_uc(tmp_path):
     """Ensure base MIP Production uses Integer unit commitment optimality."""
     from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     if not db.check_object_exists(ClassEnum.Production, "base MIP"):
@@ -1087,8 +1066,7 @@ def test_ingest_simulation_sets_production_example_to_integer_uc(tmp_path):
     """Ensure Production_Example uses Integer unit commitment optimality."""
     from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     simulation_config = get_default_simulation_config()
@@ -1143,8 +1121,7 @@ def test_ingest_static_simulation_sets_base_st_deterministic(tmp_path):
     """Ensure base_st ST Schedule runs in deterministic mode."""
     from r2x_plexos import PLEXOSConfig
 
-    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
-    template_path = config.get_config_path().joinpath(FILE_NAME)
+    template_path = _XML_TEMPLATE_DIR / FILE_NAME
     db = PlexosDB.from_xml(template_path)
 
     if not db.check_object_exists(ClassEnum.STSchedule, "base_st"):

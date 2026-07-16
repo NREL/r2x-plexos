@@ -1,7 +1,7 @@
 """Utility functions for PLEXOS exporter."""
 
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -118,13 +118,37 @@ def export_time_series_csv(
     return Ok(None)
 
 
-def get_hydro_budget_property_name(resolution: timedelta) -> str:
-    """Return the PLEXOS Max Energy property name matching the given time series resolution.
+def get_hydro_budget_property_name(ts: Any) -> str:
+    """Return the PLEXOS Max Energy property name inferred from time series length.
+
+    Because all time series in r2x-plexos are stored with a fixed 1-hour
+    resolution by the CSV parser regardless of the original data frequency,
+    the resolution field cannot be used to distinguish between hourly, daily,
+    weekly, monthly, or annual constraints.  Instead, the number of data
+    points is used as a proxy for the original sampling period.
+
+    **Constant series (all values identical)** are treated as ``Max Energy Day``
+    regardless of length.  A constant 8760-row series is a scalar ``Max Energy Day``
+    property that was expanded to an hourly profile during export.  Using it as
+    ``Max Energy Hour`` would be non-binding (budget >> generator capacity) and
+    therefore meaningless in PLEXOS.
+
+    For non-constant series the row-count heuristic applies:
+
+    ============  =============  ==================
+    Row count     Frequency      PLEXOS property
+    ============  =============  ==================
+    > 366         hourly         Max Energy Hour
+    > 52 - 366    daily          Max Energy Day
+    > 12 - 52     weekly         Max Energy Week
+    > 1 - 12      monthly        Max Energy Month
+    1             annual         Max Energy Year
+    ============  =============  ==================
 
     Parameters
     ----------
-    resolution : timedelta
-        The resolution of the hydro_budget time series.
+    ts : SingleTimeSeries
+        The resolved hydro_budget time series.
 
     Returns
     -------
@@ -132,14 +156,19 @@ def get_hydro_budget_property_name(resolution: timedelta) -> str:
         One of "Max Energy Hour", "Max Energy Day", "Max Energy Week",
         "Max Energy Month", or "Max Energy Year".
     """
-    total_seconds = resolution.total_seconds()
-    if total_seconds <= 3600:
-        return "Max Energy Hour"
-    elif total_seconds <= 86400:
+    data = ts.data
+    # Constant series: scalar budget expanded to an hourly profile → treat as daily cap
+    if len(set(data)) == 1:
         return "Max Energy Day"
-    elif total_seconds <= 7 * 86400:
+
+    n = len(data)
+    if n > 366:
+        return "Max Energy Hour"
+    elif n > 52:
+        return "Max Energy Day"
+    elif n > 12:
         return "Max Energy Week"
-    elif total_seconds <= 31 * 86400:
+    elif n > 1:
         return "Max Energy Month"
     else:
         return "Max Energy Year"

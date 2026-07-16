@@ -602,7 +602,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                         elif key == "hydro_budget":
                             resolved_ts = self._resolve_matching_time_series(_comp, ts_key)
                             if resolved_ts is not None:
-                                _props.add(get_hydro_budget_property_name(resolved_ts.resolution))
+                                _props.add(get_hydro_budget_property_name(resolved_ts))
                         elif key in GENERATOR_TO_STORAGE_TS_PROPERTY_MAP:
                             pass
                         else:
@@ -636,7 +636,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             resolved_ts = self._resolve_matching_time_series(linked_storage, ts_key)
                             if resolved_ts is not None:
                                 comp_ts_props.setdefault(_gen.name, set()).add(
-                                    get_hydro_budget_property_name(resolved_ts.resolution)
+                                    get_hydro_budget_property_name(resolved_ts)
                                 )
 
             records: list[dict[str, Any]] = []
@@ -1136,9 +1136,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                 target_class_enum = gen_class
                                 if key == "hydro_budget":
                                     if resolved_ts is not None:
-                                        property_names = [
-                                            get_hydro_budget_property_name(resolved_ts.resolution)
-                                        ]
+                                        property_names = [get_hydro_budget_property_name(resolved_ts)]
                                 else:
                                     property_names = [STORAGE_TO_GENERATOR_TS_PROPERTY_MAP[key]]
                         else:
@@ -1159,7 +1157,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                 property_names = ["Rating", "Load Subtracter"]
                         elif isinstance(component, PLEXOSGenerator) and key == "hydro_budget":
                             if resolved_ts is not None:
-                                property_names = [get_hydro_budget_property_name(resolved_ts.resolution)]
+                                property_names = [get_hydro_budget_property_name(resolved_ts)]
                         else:
                             property_name = self._get_time_series_property_name(
                                 component, ts_key_name=ts_key.name

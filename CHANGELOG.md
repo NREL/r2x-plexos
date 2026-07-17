@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0](https://github.com/NatLabRockies/r2x-plexos/compare/v0.2.0...v0.3.0) (2026-07-17)
+
+
+### 🚀 Features
+
+* move master files to plexosdb to support more plexos versions on export ([#76](https://github.com/NatLabRockies/r2x-plexos/issues/76)) ([3d1a11f](https://github.com/NatLabRockies/r2x-plexos/commit/3d1a11f77bdd783707732f2d954e9e84c1c670cc))
+
+
+### 🐛 Bug Fixes
+
+* defaults addition and fixes ([#70](https://github.com/NatLabRockies/r2x-plexos/issues/70)) ([b3854ec](https://github.com/NatLabRockies/r2x-plexos/commit/b3854ec8f2fe698641f41f081512443276644d18))
+* resolve serialization issue because of cli process ([#72](https://github.com/NatLabRockies/r2x-plexos/issues/72)) ([b6676bb](https://github.com/NatLabRockies/r2x-plexos/commit/b6676bba5494cab769f86327c5be89e5d1a23279))
+* update timestamp year from reeds to plexos translation with horizon/solve year ([#74](https://github.com/NatLabRockies/r2x-plexos/issues/74)) ([76c319f](https://github.com/NatLabRockies/r2x-plexos/commit/76c319f98c1c9057c9ee161b4cc6ad06e5dc2a18))
+
+
+### 📦 Build
+
+* **deps-dev:** Bump sphinx-reports from 0.9.9 to 0.10.0 ([#68](https://github.com/NatLabRockies/r2x-plexos/issues/68)) ([db748eb](https://github.com/NatLabRockies/r2x-plexos/commit/db748eb697c2a23f7d47225f557b108438a49ed8))
+* **deps:** Bump actions/checkout from 4 to 7 ([#66](https://github.com/NatLabRockies/r2x-plexos/issues/66)) ([31aedde](https://github.com/NatLabRockies/r2x-plexos/commit/31aeddec17476fe9615f827186a262611a4345fd))
+* **deps:** bump actions/labeler from 6.1.0 to 6.2.0 ([#75](https://github.com/NatLabRockies/r2x-plexos/issues/75)) ([e34e819](https://github.com/NatLabRockies/r2x-plexos/commit/e34e819b943455170e122ad608f0fbf6aa9634ec))
+* **deps:** bump actions/setup-python from 5 to 6 ([#73](https://github.com/NatLabRockies/r2x-plexos/issues/73)) ([ea5580f](https://github.com/NatLabRockies/r2x-plexos/commit/ea5580fa93a490ac9d081456a5127f2829167b7e))
+* **deps:** Bump googleapis/release-please-action from 4.4.0 to 5.0.0 ([#67](https://github.com/NatLabRockies/r2x-plexos/issues/67)) ([105ba57](https://github.com/NatLabRockies/r2x-plexos/commit/105ba57ea3146b65c737212f7c1c7d60c09839e8))
+
 ## [0.2.0](https://github.com/NatLabRockies/r2x-plexos/compare/v0.1.5...v0.2.0) (2026-06-23)
 
 

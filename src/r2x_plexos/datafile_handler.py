@@ -734,6 +734,8 @@ def _(
 
     wide_year_cols = [col for col in collected_df.columns if col.lower().startswith("yr-")]
     if wide_year_cols:
+        if "Name" not in collected_df.columns:
+            raise pl.exceptions.SchemaFieldNotFoundError("Name")
         collected_df = collected_df.melt(
             id_vars=["Name"], value_vars=wide_year_cols, variable_name="year", value_name="Value"
         )

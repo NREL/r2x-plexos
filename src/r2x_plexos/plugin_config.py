@@ -1,10 +1,10 @@
 """PLEXOS configuration class."""
 
 import json
-from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
+import plexosdb as _plexosdb_pkg
 from pydantic import DirectoryPath, Field
 
 from r2x_core.plugin_config import PluginConfig
@@ -34,9 +34,24 @@ class PLEXOSConfig(PluginConfig):
     output_path : str, optional
         Alias for output directory. If provided, it will override `timeseries_dir` for time
     template : str, optional
-        Can be either:
-        - a file path to an XML template, or
-        - a supported version key (e.g. "PLEXOS9.2")
+        Selects the base XML template used to initialise the PLEXOS database.
+        Accepts either:
+
+        - A supported PLEXOS version key.  The corresponding master XML is
+          taken from the ``plexosdb`` package (``plexosdb/config/``):
+
+          ==================  =============================
+          Key                 File (from plexosdb)
+          ==================  =============================
+          ``PLEXOS9.0``       master_9.2R6_btu.xml
+          ``PLEXOS10.0``      master_10.0R2_btu.xml
+          ``PLEXOS11.0``      master_11.0R4_btu.xml
+          ``PLEXOS12.0``      master_12.0R3_btu.xml
+          ==================  =============================
+
+        - An absolute or relative file path to a custom XML template.
+
+        When omitted the default template (``PLEXOS10.0``) is used.
     simulation_config : SimulationConfig, optional
         Simulation configuration parameters
 
@@ -55,7 +70,7 @@ class PLEXOSConfig(PluginConfig):
     ...     model_name="MyPLEXOSModel",
     ...     timeseries_dir=Path("./timeseries"),
     ...     horizon_year=2030,
-    ...     template="PLEXOS9.2",
+    ...     template="PLEXOS9.0",
     ...     simulation_config=SimulationConfig(...),
     ... )
 
@@ -87,8 +102,10 @@ class PLEXOSConfig(PluginConfig):
         str | None,
         Field(
             description=(
-                "Template selector. Can be either an existing XML file path "
-                "or a supported version key such as 'PLEXOS9.2' or 'PLEXOS10.0'."
+                "Selects the base XML template from the plexosdb package. "
+                "Accepted version keys: 'PLEXOS9.0', 'PLEXOS10.0', 'PLEXOS11.0', 'PLEXOS12.0'. "
+                "May also be a path to a custom XML file. "
+                "Defaults to 'PLEXOS10.0' when omitted."
             ),
             default=None,
         ),
@@ -99,11 +116,16 @@ class PLEXOSConfig(PluginConfig):
 
     @classmethod
     def get_config_path(cls) -> Path:
-        """Return the plugin's configuration directory path."""
-        resolve_method: Callable[[Any], Path] | None = getattr(cls, "_resolve_config_path", None)
-        if resolve_method:
-            return resolve_method(None)
-        return cls._package_config_path()
+        """Return the plexosdb config directory where XML templates live.
+
+        If the class (or a subclass) provides a ``_resolve_config_path``
+        method it takes precedence, allowing tests and subclasses to override
+        the location without modifying this implementation.
+        """
+        resolve_method = getattr(cls, "_resolve_config_path", None)
+        if resolve_method is not None:
+            return Path(resolve_method(None))
+        return Path(_plexosdb_pkg.__file__).parent / "config"
 
     @classmethod
     def load_defaults(cls) -> dict[str, Any]:

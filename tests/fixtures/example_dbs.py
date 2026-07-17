@@ -9,12 +9,14 @@ from .profiles import NORMALIZED_SOLAR_PROFILE, NORMALIZED_WIND_PROFILE
 @pytest.fixture
 def db_base():
     from datetime import datetime
+    from pathlib import Path
+
+    import plexosdb
 
     from r2x_plexos.exporter import DEFAULT_XML_TEMPLATE
-    from r2x_plexos.plugin_config import PLEXOSConfig
     from r2x_plexos.utils_simulation import datetime_to_ole_date
 
-    template_xml = PLEXOSConfig.get_config_path().joinpath(DEFAULT_XML_TEMPLATE)
+    template_xml = Path(plexosdb.__file__).parent / "config" / DEFAULT_XML_TEMPLATE
     db: PlexosDB = PlexosDB.from_xml(template_xml)
 
     db.add_object(ClassEnum.Model, "Base", category="TestModels")

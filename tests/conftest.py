@@ -58,3 +58,60 @@ def data_folder(pytestconfig: pytest.Config) -> Path:
 def simple_xml(data_folder: Path) -> Path:
     xml_path = data_folder.joinpath(SIMPLE_XML)
     return xml_path
+
+
+# ---------------------------------------------------------------------------
+# Shared exporter fixtures and helpers
+# ---------------------------------------------------------------------------
+from typing import TYPE_CHECKING, cast  # noqa: E402
+
+from plexosdb import CollectionEnum, PlexosDB  # noqa: E402
+
+if TYPE_CHECKING:
+    from r2x_core import System
+
+from r2x_plexos import PLEXOSConfig  # noqa: E402
+from r2x_plexos.exporter import DEFAULT_XML_TEMPLATE  # noqa: E402
+
+
+def is_valid_class_enum(class_enum):
+    """Check if a ClassEnum has a corresponding CollectionEnum."""
+    try:
+        _ = CollectionEnum[class_enum.name]
+        return True
+    except KeyError:
+        return False
+
+
+@pytest.fixture
+def plexos_config():
+    from r2x_plexos import PLEXOSConfig
+
+    return PLEXOSConfig(model_name="Base", horizon_year=2024)
+
+
+@pytest.fixture
+def template_db(plexos_config: PLEXOSConfig) -> PlexosDB:
+    """Create a PlexosDB from the default template."""
+    template_path = plexos_config.get_config_path().joinpath(DEFAULT_XML_TEMPLATE)
+    return PlexosDB.from_xml(template_path)
+
+
+@pytest.fixture
+def serialized_plexos_system(tmp_path, db_all_gen_types, plexos_config) -> "System":
+    from r2x_core import DataStore, PluginContext
+    from r2x_plexos import PLEXOSParser
+
+    store = DataStore(path=tmp_path)
+
+    ctx = PluginContext(config=plexos_config, store=store)
+    parser = cast(PLEXOSParser, PLEXOSParser.from_context(ctx))
+    parser.db = db_all_gen_types
+
+    result = parser.run()
+    sys = result.system
+    assert sys is not None
+
+    serialized_sys_fpath = tmp_path / "test_plexos_system.json"
+    sys.to_json(serialized_sys_fpath)
+    return sys

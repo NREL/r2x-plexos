@@ -1,7 +1,7 @@
 """Utility functions for PLEXOS exporter."""
 
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +156,19 @@ def get_hydro_budget_property_name(ts: Any) -> str:
         One of "Max Energy Hour", "Max Energy Day", "Max Energy Week",
         "Max Energy Month", or "Max Energy Year".
     """
+    if isinstance(ts, timedelta):
+        total_hours = ts.total_seconds() / 3600
+        if total_hours <= 1:
+            return "Max Energy Hour"
+        elif total_hours <= 24:
+            return "Max Energy Day"
+        elif total_hours <= 168:
+            return "Max Energy Week"
+        elif total_hours <= 744:
+            return "Max Energy Month"
+        else:
+            return "Max Energy Year"
+
     data = ts.data
     # Constant series: scalar budget expanded to an hourly profile → treat as daily cap
     if len(set(data)) == 1:

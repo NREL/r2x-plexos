@@ -10,16 +10,9 @@ from typing import Any
 
 from loguru import logger
 from plexosdb import ClassEnum, PlexosDB
+from plexosdb.checks import check_object_exists as _check_object_exists
 from plexosdb.enums import get_default_collection
 from plexosdb.exceptions import NotFoundError
-
-try:
-    from plexosdb.checks import check_object_exists as _check_object_exists
-except ImportError:
-
-    def _check_object_exists(db: PlexosDB, class_enum: ClassEnum, name: str, **_: Any) -> bool:  # type: ignore[misc]
-        return name in db.list_objects_by_class(class_enum)
-
 
 from r2x_core import Err, Ok, Result
 from r2x_plexos.models import PLEXOSHorizon, PLEXOSModel

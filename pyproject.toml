@@ -5,7 +5,7 @@ description = "Plexos Models, Parser and Exporter"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
 dependencies = [
-    "plexosdb>=1.3.0",
+    "plexosdb>=1.6.0",
     "r2x-core>=0.4.0,<1.0.0",
 ]
 keywords=["PLEXOS"]
@@ -14,21 +14,18 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: BSD License",
-    "Topic :: Software Development :: Build Tools",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "License :: OSI Approved :: BSD License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Topic :: File Formats :: JSON",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator",
-    "Topic :: Software Development :: Build Tools",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
@@ -67,6 +64,11 @@ Documentation = "https://nrel.github.io/r2x-plexos/"
 Repository = "https://github.com/NREL/r2x-plexos"
 Issues = "https://github.com/NREL/r2x-plexos/issues"
 Changelog = "https://nrel.github.io/r2x-plexos/CHANGELOG.html"
+
+[tool.uv]
+override-dependencies = [
+    "plexos2duckdb==0.1.0b11",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]

@@ -21,6 +21,21 @@ The exporter leverages plexosdb to create and populate a PLEXOS database:
 - Membership creation: Define component relationships
 - XML generation: Export database to XML file
 
+## XML Template Selection
+
+The exporter loads a master PLEXOS XML database from the `plexosdb` package
+(`plexosdb/config/`) to serve as the starting point for every export.  Four
+templates are shipped, covering PLEXOS 9 through 12:
+
+- `master_9.2R6_btu.xml` — PLEXOS 9.x (`"PLEXOS9.0"`)
+- `master_10.0R2_btu.xml` — PLEXOS 10.x (`"PLEXOS10.0"`, default)
+- `master_11.0R4_btu.xml` — PLEXOS 11.x (`"PLEXOS11.0"`)
+- `master_12.0R3_btu.xml` — PLEXOS 12.x (`"PLEXOS12.0"`)
+
+The active template is resolved by `PLEXOSExporter._resolve_template_path()`
+which accepts a version key, a bare filename, or an absolute path via
+`PLEXOSConfig.template`.
+
 ## Configuration Setup
 
 For new databases, the exporter creates simulation configuration:

@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from loguru import logger
 from plexosdb import ClassEnum, PlexosDB
+from plexosdb.checks import check_object_exists as _check_object_exists
 from plexosdb.enums import CollectionEnum, get_default_collection
 
 from r2x_core import Err, Ok, Plugin, Result
@@ -51,8 +52,10 @@ from .utils_simulation import (
 NESTED_ATTRIBUTES = {"ext", "bus", "services"}
 DEFAULT_XML_TEMPLATE = "master_10.0R2_btu.xml"
 XML_TEMPLATE_MAP = {
-    "PLEXOS9.2": "master_9.2R6_btu.xml",
+    "PLEXOS9.0": "master_9.2R6_btu.xml",
     "PLEXOS10.0": "master_10.0R2_btu.xml",
+    "PLEXOS11.0": "master_11.0R4_btu.xml",
+    "PLEXOS12.0": "master_12.0R3_btu.xml",
 }
 BATCH_SIZE = 500
 FLOW_CLIP_MEMO_TEXT = "Setting fixed value of ±99999 to flows greater/less than ±100000"
@@ -117,7 +120,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 xml_fname = self._resolve_template_path()
                 self.db = PlexosDB.from_xml(xml_path=xml_fname)
 
-            if not self.db.check_object_exists(ClassEnum.Scenario, self.plexos_scenario):
+            if not _check_object_exists(self.db, ClassEnum.Scenario, self.plexos_scenario):
                 self.db.add_scenario(self.plexos_scenario)
 
             setup_result = self.setup_configuration()
@@ -592,7 +595,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                         elif key == "hydro_budget":
                             resolved_ts = self._resolve_matching_time_series(_comp, ts_key)
                             if resolved_ts is not None:
-                                _props.add(get_hydro_budget_property_name(resolved_ts.resolution))
+                                _props.add(get_hydro_budget_property_name(resolved_ts))
                         elif key in GENERATOR_TO_STORAGE_TS_PROPERTY_MAP:
                             pass
                         else:
@@ -626,7 +629,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                             resolved_ts = self._resolve_matching_time_series(linked_storage, ts_key)
                             if resolved_ts is not None:
                                 comp_ts_props.setdefault(_gen.name, set()).add(
-                                    get_hydro_budget_property_name(resolved_ts.resolution)
+                                    get_hydro_budget_property_name(resolved_ts)
                                 )
 
             records: list[dict[str, Any]] = []
@@ -883,7 +886,22 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             if not m.parent_object or not m.child_object or not m.collection:
                 continue
             parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(m.parent_object))
+            if parent_class is None:
+                # After JSON serialization/deserialization the specific subtype is lost and
+                # the object comes back as PLEXOSObject (base class). Fall back to a UUID
+                # lookup in the system to recover the real type.
+                try:
+                    actual = self.system.get_component_by_uuid(m.parent_object.uuid)
+                    parent_class = PLEXOS_TYPE_MAP_INVERTED.get(type(actual))
+                except Exception:
+                    pass
             child_class = PLEXOS_TYPE_MAP_INVERTED.get(type(m.child_object))
+            if child_class is None:
+                try:
+                    actual = self.system.get_component_by_uuid(m.child_object.uuid)
+                    child_class = PLEXOS_TYPE_MAP_INVERTED.get(type(actual))
+                except Exception:
+                    pass
             if not parent_class or not child_class:
                 continue
             if parent_class in (ClassEnum.Model, ClassEnum.Horizon) or child_class in (
@@ -1111,9 +1129,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                 target_class_enum = gen_class
                                 if key == "hydro_budget":
                                     if resolved_ts is not None:
-                                        property_names = [
-                                            get_hydro_budget_property_name(resolved_ts.resolution)
-                                        ]
+                                        property_names = [get_hydro_budget_property_name(resolved_ts)]
                                 else:
                                     property_names = [STORAGE_TO_GENERATOR_TS_PROPERTY_MAP[key]]
                         else:
@@ -1134,7 +1150,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                                 property_names = ["Rating", "Load Subtracter"]
                         elif isinstance(component, PLEXOSGenerator) and key == "hydro_budget":
                             if resolved_ts is not None:
-                                property_names = [get_hydro_budget_property_name(resolved_ts.resolution)]
+                                property_names = [get_hydro_budget_property_name(resolved_ts)]
                         else:
                             property_name = self._get_time_series_property_name(
                                 component, ts_key_name=ts_key.name
@@ -1429,7 +1445,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 logger.debug("No time series data collected for group {}, skipping CSV.", field_name)
                 continue
 
-            result = export_time_series_csv(filepath, time_series_data)
+            target_year = self.solve_year or getattr(self.config, "horizon_year", None)
+            result = export_time_series_csv(filepath, time_series_data, target_year=target_year)
 
             if result.is_err():
                 assert isinstance(result, Err)
@@ -1547,15 +1564,16 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
     def _resolve_template_path(self) -> Path:
         """Resolve template from config.template as either a version key or a file path."""
         template_value = self.config.template
+        config_dir = type(self.config).get_config_path()
 
         if not template_value:
-            resolved = self.config.get_config_path().joinpath(DEFAULT_XML_TEMPLATE)
+            resolved = config_dir / DEFAULT_XML_TEMPLATE
             logger.debug(f"Using default XML template: {resolved}")
             return resolved
 
         # Treat known version keys as packaged template names
         if template_value in XML_TEMPLATE_MAP:
-            resolved = self.config.get_config_path().joinpath(XML_TEMPLATE_MAP[template_value])
+            resolved = config_dir / XML_TEMPLATE_MAP[template_value]
             logger.debug(f"Using XML template mapping for {template_value}: {resolved}")
             return resolved
 
@@ -1567,8 +1585,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
             logger.debug(f"Using XML template path from config: {resolved}")
             return resolved
 
-        # Also allow bare filename in package config dir
-        packaged_template = self.config.get_config_path().joinpath(template_value)
+        # Also allow bare filename in config dir
+        packaged_template = config_dir / template_value
         if packaged_template.exists():
             logger.debug(f"Using packaged XML template by filename: {packaged_template}")
             return packaged_template

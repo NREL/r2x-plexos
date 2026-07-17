@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from loguru import logger
 from plexosdb import ClassEnum, CollectionEnum, PlexosDB
+from plexosdb.exceptions import NotFoundError as _NotFoundError
 
 from r2x_core import Err, Ok, Result
 
@@ -164,25 +165,25 @@ def resolve_horizon_for_model(db: PlexosDB, model_name: str) -> tuple[datetime, 
         date_from = db.get_attribute(
             ClassEnum.Horizon, object_name=horizon_name, attribute_name="Chrono Date From"
         )[0]
-    except AssertionError:
+    except (AssertionError, _NotFoundError):
         date_from = None
     try:
         date_to = db.get_attribute(
             ClassEnum.Horizon, object_name=horizon_name, attribute_name="Chrono Date To"
         )[0]
-    except AssertionError:
+    except (AssertionError, _NotFoundError):
         date_to = None
     try:
         step_type = db.get_attribute(
             ClassEnum.Horizon, object_name=horizon_name, attribute_name="Chrono Step Type"
         )[0]
-    except AssertionError:
+    except (AssertionError, _NotFoundError):
         step_type = None
     try:
         step_count = db.get_attribute(
             ClassEnum.Horizon, object_name=horizon_name, attribute_name="Chrono Step Count"
         )[0]
-    except AssertionError:
+    except (AssertionError, _NotFoundError):
         step_count = None
 
     if not date_from and not date_to:

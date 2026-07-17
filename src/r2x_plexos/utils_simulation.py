@@ -10,6 +10,7 @@ from typing import Any
 
 from loguru import logger
 from plexosdb import ClassEnum, PlexosDB
+from plexosdb.checks import check_object_exists as _check_object_exists
 from plexosdb.enums import get_default_collection
 from plexosdb.exceptions import NotFoundError
 
@@ -1143,7 +1144,7 @@ def _ensure_base_diagnostic_defaults(db: PlexosDB) -> None:
     Insert policy: upsert — existing values are overwritten by the defaults
     defined in BASE_DIAGNOSE_DEFAULT_ATTRIBUTE_CANDIDATES.
     """
-    if not db.check_object_exists(ClassEnum.Diagnostic, BASE_DIAGNOSE_NAME):
+    if not _check_object_exists(db, ClassEnum.Diagnostic, BASE_DIAGNOSE_NAME):
         return
 
     for candidates, attr_value in BASE_DIAGNOSE_DEFAULT_ATTRIBUTE_CANDIDATES.items():
@@ -1190,7 +1191,7 @@ def _ensure_transmission_defaults(db: PlexosDB, transmission_object_names: set[s
         return
 
     for object_name in transmission_object_names:
-        if not db.check_object_exists(ClassEnum.Transmission, object_name):
+        if not _check_object_exists(db, ClassEnum.Transmission, object_name):
             continue
 
         for candidates, attr_value in TRANSMISSION_DEFAULT_ATTRIBUTE_CANDIDATES.items():
@@ -1281,7 +1282,7 @@ def _ensure_performance_defaults(db: PlexosDB, performance_object_names: set[str
         return
 
     for object_name in performance_object_names:
-        if not db.check_object_exists(ClassEnum.Performance, object_name):
+        if not _check_object_exists(db, ClassEnum.Performance, object_name):
             continue
 
         for attr_name, attr_value in PERFORMANCE_DEFAULT_ATTRIBUTES.items():
@@ -1316,7 +1317,7 @@ def _ensure_production_defaults(db: PlexosDB, production_object_names: set[str])
         return
 
     for object_name in production_object_names:
-        if not db.check_object_exists(ClassEnum.Production, object_name):
+        if not _check_object_exists(db, ClassEnum.Production, object_name):
             continue
 
         for attr_name, attr_value in PRODUCTION_DEFAULT_ATTRIBUTES.items():
@@ -1351,7 +1352,7 @@ def _ensure_st_schedule_defaults(db: PlexosDB, st_schedule_object_names: set[str
         return
 
     for object_name in st_schedule_object_names:
-        if not db.check_object_exists(ClassEnum.STSchedule, object_name):
+        if not _check_object_exists(db, ClassEnum.STSchedule, object_name):
             continue
 
         for attr_name, attr_value in ST_SCHEDULE_DEFAULT_ATTRIBUTES.items():
@@ -1391,7 +1392,7 @@ def ingest_simulation_to_plexosdb(
     logger.info(f"Creating {len(result.horizons)} horizon object(s)...")
     for horizon in result.horizons:
         # Check if horizon already exists
-        if not db.check_object_exists(ClassEnum.Horizon, horizon.name):
+        if not _check_object_exists(db, ClassEnum.Horizon, horizon.name):
             try:
                 horizon_id = db.add_object(ClassEnum.Horizon, horizon.name)
             except Exception as e:
@@ -1406,7 +1407,7 @@ def ingest_simulation_to_plexosdb(
     logger.info(f"Creating {len(result.models)} model object(s)...")
 
     for model in result.models:
-        if not db.check_object_exists(ClassEnum.Model, model.name):
+        if not _check_object_exists(db, ClassEnum.Model, model.name):
             try:
                 model_id = db.add_object(ClassEnum.Model, model.name, category=model.category)
             except Exception as e:
@@ -1423,7 +1424,7 @@ def ingest_simulation_to_plexosdb(
             model_ids[model.name] = db.get_object_id(ClassEnum.Model, model.name)
             logger.debug(f"Model '{model.name}' already exists.")
 
-    if not db.check_object_exists(ClassEnum.Scenario, scenario_name):
+    if not _check_object_exists(db, ClassEnum.Scenario, scenario_name):
         db.add_object(ClassEnum.Scenario, scenario_name)
 
     for model_name in model_ids:

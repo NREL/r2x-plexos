@@ -77,6 +77,26 @@ def test_export_time_series_csv_success(tmp_path: Path, sample_time_series: Sing
     assert "2024-01-01" in lines[1]
 
 
+def test_export_monthly_hydro_budget_uses_calendar_month_starts(tmp_path: Path):
+    filepath = tmp_path / "hydro_budget.csv"
+    hydro_budget = SingleTimeSeries.from_array(
+        list(range(12)),
+        "hydro_budget",
+        datetime(2012, 1, 15),
+        resolution=timedelta(days=30),
+    )
+
+    result = export_time_series_csv(
+        filepath,
+        [("hydro", hydro_budget)],
+        target_year=2050,
+    )
+
+    assert result.is_ok()
+    timestamps = [line.split(",", maxsplit=1)[0] for line in filepath.read_text().splitlines()[1:]]
+    assert timestamps == [f"2050-{month:02d}-01T00:00:00" for month in range(1, 13)]
+
+
 def test_get_component_category_with_category():
     """Test getting category from component that has category attribute."""
     gen = PLEXOSGenerator(name="TestGen", category="Thermal")

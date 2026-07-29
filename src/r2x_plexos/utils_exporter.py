@@ -66,6 +66,16 @@ def format_datetime(dt: datetime) -> str:
     return dt.isoformat()
 
 
+def _calendar_month_timestamps(initial_timestamp: datetime, length: int) -> list[datetime]:
+    """Build first-of-month timestamps starting from the initial timestamp's month."""
+    timestamps: list[datetime] = []
+    start_month_index = initial_timestamp.year * 12 + initial_timestamp.month - 1
+    for offset in range(length):
+        year, zero_based_month = divmod(start_month_index + offset, 12)
+        timestamps.append(initial_timestamp.replace(year=year, month=zero_based_month + 1, day=1))
+    return timestamps
+
+
 def export_time_series_csv(
     filepath: Path,
     time_series_data: list[tuple[str, SingleTimeSeries]],
@@ -104,7 +114,10 @@ def export_time_series_csv(
                 f"Time series length mismatch: {comp_name} has {len(ts.data)} points, expected {data_length}"
             )
 
-    datetime_values = [initial_timestamp + (i * resolution) for i in range(data_length)]
+    if first_ts.name == "hydro_budget" and resolution == timedelta(days=30):
+        datetime_values = _calendar_month_timestamps(initial_timestamp, data_length)
+    else:
+        datetime_values = [initial_timestamp + (i * resolution) for i in range(data_length)]
 
     with open(filepath, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)

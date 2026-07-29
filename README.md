@@ -2,14 +2,14 @@
 
 > R2X plug-in for translating to and from PLEXOS XML databases.
 >
-> [![image](https://img.shields.io/pypi/v/r2x.svg)](https://pypi.python.org/pypi/r2x-plexos)
-> [![image](https://img.shields.io/pypi/l/r2x.svg)](https://pypi.python.org/pypi/r2x-plexos)
-> [![image](https://img.shields.io/pypi/pyversions/r2x.svg)](https://pypi.python.org/pypi/r2x-plexos)
-> [![CI](https://github.com/NREL/r2x/actions/workflows/CI.yaml/badge.svg)](https://github.com/NREL/r2x/actions/workflows/ci.yaml)
-> [![codecov](https://codecov.io/gh/NREL/r2x-plexos/branch/main/graph/badge.svg)](https://codecov.io/gh/NREL/r2x-plexos)
+> [![PyPI](https://img.shields.io/pypi/v/r2x-plexos.svg)](https://pypi.org/project/r2x-plexos/)
+> [![License](https://img.shields.io/pypi/l/r2x-plexos.svg)](https://pypi.org/project/r2x-plexos/)
+> [![Python](https://img.shields.io/pypi/pyversions/r2x-plexos.svg)](https://pypi.org/project/r2x-plexos/)
+> [![CI](https://github.com/NatLabRockies/r2x-plexos/actions/workflows/ci.yaml/badge.svg)](https://github.com/NatLabRockies/r2x-plexos/actions/workflows/ci.yaml)
+> [![codecov](https://codecov.io/gh/NatLabRockies/r2x-plexos/branch/main/graph/badge.svg)](https://codecov.io/gh/NatLabRockies/r2x-plexos)
 > [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-> [![Documentation](https://github.com/NREL/r2x-plexos/actions/workflows/docs.yaml/badge.svg?branch=main)](https://nrel.github.io/r2x-plexos/)
-> [![Docstring Coverage](https://nrel.github.io/r2x-plexos/_static/docstr_coverage_badge.svg)](https://nrel.github.io/r2x-plexos/)
+> [![Documentation](https://github.com/NatLabRockies/r2x-plexos/actions/workflows/docs.yaml/badge.svg?branch=main)](https://natlabrockies.github.io/r2x-plexos/)
+> [![Docstring Coverage](https://natlabrockies.github.io/r2x-plexos/_static/docstr_coverage_badge.svg)](https://natlabrockies.github.io/r2x-plexos/)
 
 
 R2X PLEXOS plugin for parsing and exporting PLEXOS power system models.
@@ -61,10 +61,10 @@ context.source_system = plexos_sys
 
 ## Documentation Sections
 
-- [Tutorials](https://nrel.github.io/r2x-plexos/tutorials/) - Step-by-step learning guides
-- [How-To Guides](https://nrel.github.io/r2x-plexos/how-tos/) - Task-focused recipes
-- [Explanations](https://nrel.github.io/r2x-plexos/explanations/) - Architecture and design
-- [References](https://nrel.github.io/r2x-plexos/explanations/references/) - API and configuration reference
+- [Tutorials](https://natlabrockies.github.io/r2x-plexos/tutorials/) - Step-by-step learning guides
+- [How-To Guides](https://natlabrockies.github.io/r2x-plexos/how-tos/) - Task-focused recipes
+- [Explanations](https://natlabrockies.github.io/r2x-plexos/explanations/) - Architecture and design
+- [References](https://natlabrockies.github.io/r2x-plexos/references/) - API and configuration reference
 
 ## Roadmap
 

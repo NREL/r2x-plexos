@@ -59,11 +59,11 @@ plexos-parser = "r2x_plexos:PLEXOSParser"
 plexos-exporter = "r2x_plexos:PLEXOSExporter"
 
 [project.urls]
-Homepage = "https://github.com/NREL/r2x-plexos"
-Documentation = "https://nrel.github.io/r2x-plexos/"
-Repository = "https://github.com/NREL/r2x-plexos"
-Issues = "https://github.com/NREL/r2x-plexos/issues"
-Changelog = "https://nrel.github.io/r2x-plexos/CHANGELOG.html"
+Homepage = "https://github.com/NatLabRockies/r2x-plexos"
+Documentation = "https://natlabrockies.github.io/r2x-plexos/"
+Repository = "https://github.com/NatLabRockies/r2x-plexos"
+Issues = "https://github.com/NatLabRockies/r2x-plexos/issues"
+Changelog = "https://natlabrockies.github.io/r2x-plexos/CHANGELOG.html"
 
 [tool.uv]
 override-dependencies = [

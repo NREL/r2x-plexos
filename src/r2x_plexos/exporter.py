@@ -1068,16 +1068,29 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 for ts_key in ts_keys:
                     component_class = type(component).__name__
                     safe_ts_name = ts_key.name.replace(" ", "_").replace("/", "_")
-                    pattern = re.compile(rf"{re.escape(component_class)}_{re.escape(safe_ts_name)}_.*\.csv")
 
-                    matched_file = None
-                    for filename in dir_files:
-                        if pattern.match(filename):
-                            matched_file = filename
-                            break
+                    # Build the exact filename this run would have written, mirroring the
+                    # logic in export_time_series so we never pick a file from a different
+                    # solve_year when multiple years share the same output directory.
+                    ts_metadata: dict[str, Any] = dict(ts_key.features.items())
+                    if self.config.model_name is not None:
+                        ts_metadata["model_name"] = self.config.model_name
+                    if self.solve_year is not None:
+                        ts_metadata["horizon_year"] = self.solve_year
+                    elif getattr(self.config, "horizon_year", None) is not None:
+                        ts_metadata["horizon_year"] = self.config.horizon_year
+                    if self.weather_year is not None:
+                        ts_metadata["weather_year"] = self.weather_year
+                    expected_filename = generate_csv_filename(ts_key.name, component_class, ts_metadata)
 
-                    if not matched_file:
-                        fallback_pattern = re.compile(rf"[^_]+_{re.escape(safe_ts_name)}_.*\.csv")
+                    matched_file: str | None = None
+                    if expected_filename in dir_files:
+                        matched_file = expected_filename
+                    else:
+                        # Fallback: match by class + ts name prefix when the exact file is absent
+                        fallback_pattern = re.compile(
+                            rf"{re.escape(component_class)}_{re.escape(safe_ts_name)}_.*\.csv"
+                        )
                         for filename in dir_files:
                             if fallback_pattern.match(filename):
                                 matched_file = filename

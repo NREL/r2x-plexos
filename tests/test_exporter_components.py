@@ -670,14 +670,16 @@ def test_add_component_properties_skips_ts_property(template_db, mocker):
 
 
 def test_link_datafiles_to_components_links_generator_via_fallback_filename(mocker, tmp_path):
-    """Linking should use fallback filename pattern and add both generator max-power properties."""
+    """Class-prefix fallback matches when exact solve-year filename is absent."""
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)
     sys_obj = mocker.Mock()
 
     generator = PLEXOSGenerator(name="GenA", category="thermal", units=1, rating=50.0)
+    # File uses class prefix but a different suffix, so exact match won't fire.
+    fallback_filename = "PLEXOSGenerator_max_active_power_OtherSuffix.csv"
     datafile = PLEXOSDatafile(
-        name="A_max_active_power_2024",
-        filename=PLEXOSPropertyValue.from_dict({"datafile_name": "Data/A_max_active_power_2024.csv"}),
+        name="PLEXOSGenerator_max_active_power_OtherSuffix",
+        filename=PLEXOSPropertyValue.from_dict({"datafile_name": f"Data/{fallback_filename}"}),
     )
     datafile.object_id = 101
 
@@ -694,7 +696,7 @@ def test_link_datafiles_to_components_links_generator_via_fallback_filename(mock
     sys_obj.list_time_series_keys.return_value = [ts_key]
 
     def _get_component(component_type, name):
-        if component_type is PLEXOSDatafile and name == "A_max_active_power_2024":
+        if component_type is PLEXOSDatafile and name == "PLEXOSGenerator_max_active_power_OtherSuffix":
             return datafile
         return None
 
@@ -711,7 +713,7 @@ def test_link_datafiles_to_components_links_generator_via_fallback_filename(mock
     output_dir = tmp_path / "Data"
     output_dir.mkdir()
     mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=output_dir)
-    mocker.patch("r2x_plexos.exporter.os.listdir", return_value=["A_max_active_power_2024.csv"])
+    mocker.patch("r2x_plexos.exporter.os.listdir", return_value=[fallback_filename])
     mocker.patch.object(exporter, "_resolve_matching_time_series", return_value=None)
 
     exporter._link_datafiles_to_components()

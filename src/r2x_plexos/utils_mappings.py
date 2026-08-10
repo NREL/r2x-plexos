@@ -73,6 +73,7 @@ CONFIG_CLASS_MAP = {
 }
 # I'll think in a better way to address the mappings
 GENERATOR_TS_PROPERTY_MAP: dict[str, str] = {
+    "fixed_load": "Fixed Load",
     "max_active_power": "Rating",
     "hydro_budget": "Max Energy Day",
     "max_energy_hour": "Max Energy Hour",

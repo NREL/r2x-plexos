@@ -518,6 +518,7 @@ def test_get_time_series_property_name_subclass_paths_use_map_values():
 
     assert exporter._get_time_series_property_name(storage, ts_key_name="natural_inflow") is not None
     assert exporter._get_time_series_property_name(generator, ts_key_name="max_active_power") is not None
+    assert exporter._get_time_series_property_name(generator, ts_key_name="fixed_load") == "Fixed Load"
 
 
 def test_build_generator_to_storage_map_skips_invalid_and_maps_reverse_direction(mocker):

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.1](https://github.com/NatLabRockies/r2x-plexos/compare/v0.3.0...v0.3.1) (2026-08-11)
+
+
+### 🐛 Bug Fixes
+
+* export generator fixed load time series ([7b90e74](https://github.com/NatLabRockies/r2x-plexos/commit/7b90e7478deeee07b3d160fc710c96ea1c6fc617))
+* Export generator fixed-load timeseries to PLEXOS ([#87](https://github.com/NatLabRockies/r2x-plexos/issues/87)) ([7b90e74](https://github.com/NatLabRockies/r2x-plexos/commit/7b90e7478deeee07b3d160fc710c96ea1c6fc617))
+* resolve package paths to original source ([#85](https://github.com/NatLabRockies/r2x-plexos/issues/85)) ([51a9328](https://github.com/NatLabRockies/r2x-plexos/commit/51a93284ddeffa3a0964c780cd3c5565b9bd6e8f))
+* update solve year matching on time series linking ([#88](https://github.com/NatLabRockies/r2x-plexos/issues/88)) ([d3604cc](https://github.com/NatLabRockies/r2x-plexos/commit/d3604cc62c60c7b20eb24b2a3a078940469aa97c))
+* update timestamp handling for dynamic time series entry ([#83](https://github.com/NatLabRockies/r2x-plexos/issues/83)) ([84c693b](https://github.com/NatLabRockies/r2x-plexos/commit/84c693b6eda93910da9b4d1c4fb4023385648418))
+
+
+### 📦 Build
+
+* **deps-dev:** Bump prek from 0.2.30 to 0.4.10 ([#79](https://github.com/NatLabRockies/r2x-plexos/issues/79)) ([af1d00c](https://github.com/NatLabRockies/r2x-plexos/commit/af1d00c2762a37865877f6e7384786fb7f73a8fc))
+* **deps-dev:** Update uv-build requirement ([5e9e3d0](https://github.com/NatLabRockies/r2x-plexos/commit/5e9e3d04b4490591726e54b6f2f2a12c7fc9417e))
+* **deps-dev:** Update uv-build requirement from &lt;0.9.0,&gt;=0.8.22 to &gt;=0.8.22,&lt;0.12.0 ([#78](https://github.com/NatLabRockies/r2x-plexos/issues/78)) ([5e9e3d0](https://github.com/NatLabRockies/r2x-plexos/commit/5e9e3d04b4490591726e54b6f2f2a12c7fc9417e))
+* **deps:** Bump actions/checkout from 7.0.0 to 7.0.1 ([#80](https://github.com/NatLabRockies/r2x-plexos/issues/80)) ([44c89e3](https://github.com/NatLabRockies/r2x-plexos/commit/44c89e3d5af2783cc2c5cae9898cc8b2cf1e8cc4))
+* **deps:** Bump actions/labeler from 6.2.0 to 7.0.0 ([#81](https://github.com/NatLabRockies/r2x-plexos/issues/81)) ([32fef51](https://github.com/NatLabRockies/r2x-plexos/commit/32fef518219ad7c50e2eb8e256de37f595c3d0d4))
+* **deps:** Bump actions/setup-python from 6 to 7 ([#82](https://github.com/NatLabRockies/r2x-plexos/issues/82)) ([7670307](https://github.com/NatLabRockies/r2x-plexos/commit/7670307e1f96ba85430073c22ed612aab224f26e))
+* **deps:** Bump pypa/gh-action-pypi-publish from 1.14.0 to 1.14.2 ([#86](https://github.com/NatLabRockies/r2x-plexos/issues/86)) ([36dbcf9](https://github.com/NatLabRockies/r2x-plexos/commit/36dbcf994106c806b9b98c7073c6f482aa089e44))
+
 ## [0.3.0](https://github.com/NatLabRockies/r2x-plexos/compare/v0.2.0...v0.3.0) (2026-07-17)
 
 

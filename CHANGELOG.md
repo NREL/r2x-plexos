@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/NatLabRockies/r2x-plexos/compare/v0.3.1...v0.3.2) (2026-08-13)
+
+
+### 🐛 Bug Fixes
+
+* update fixed load to match correctly its time series ([#89](https://github.com/NatLabRockies/r2x-plexos/issues/89)) ([5d44029](https://github.com/NatLabRockies/r2x-plexos/commit/5d44029bd222e51dd0fc37955e75f6f1de13418d))
+
 ## [0.3.1](https://github.com/NatLabRockies/r2x-plexos/compare/v0.3.0...v0.3.1) (2026-08-11)
 
 

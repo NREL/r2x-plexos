@@ -669,6 +669,35 @@ def test_add_component_properties_skips_ts_property(template_db, mocker):
     assert "Load" not in prop_names
 
 
+def test_add_component_properties_skips_purchaser_fixed_load_ts_property(template_db, mocker):
+    """Test purchaser Fixed Load is omitted when it is supplied by a time series."""
+    from r2x_plexos.models import PLEXOSPurchaser
+
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys = System(name="test")
+
+    purchaser = PLEXOSPurchaser(name="PurchaserA")
+    sys.add_component(purchaser)
+
+    ctx = PluginContext(config=config, system=sys)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
+    exporter.db = template_db
+
+    template_db.add_object(ClassEnum.Purchaser, "PurchaserA", category="default")
+
+    mocker.patch.object(sys, "has_time_series", return_value=True)
+
+    ts_key = mocker.Mock()
+    ts_key.name = "max_active_power"
+    mocker.patch.object(sys, "list_time_series_keys", return_value=[ts_key])
+
+    exporter._add_component_properties()
+
+    props = template_db.get_object_properties(ClassEnum.Purchaser, "PurchaserA")
+    prop_names = [p.get("property") for p in props]
+    assert "Fixed Load" not in prop_names
+
+
 def test_link_datafiles_to_components_links_generator_via_fallback_filename(mocker, tmp_path):
     """Class-prefix fallback matches when exact solve-year filename is absent."""
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)

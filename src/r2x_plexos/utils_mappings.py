@@ -102,5 +102,5 @@ STORAGE_TO_GENERATOR_TS_PROPERTY_MAP: dict[str, str] = {
 FIXED_TS_PROP: dict[type, str] = {
     PLEXOSReserve: "Min Provision",
     PLEXOSRegion: "Load",
-    PLEXOSPurchaser: "Max Load",
+    PLEXOSPurchaser: "Fixed Load",
 }

@@ -257,6 +257,67 @@ def test_export_time_series_separates_same_ts_key_by_component_class(mocker, tmp
     assert any(name.startswith("PLEXOSPurchaser_max_active_power_") for name in exported_paths)
 
 
+def test_export_time_series_prefixes_import_hydro_budget_filename(mocker, tmp_path):
+    """Import hydro budgets use a distinct CSV filename while keeping the TS key."""
+    config = PLEXOSConfig(model_name="Base", horizon_year=2024)
+    sys_mock = mocker.Mock()
+
+    class GeneratorType:
+        pass
+
+    regular = mocker.Mock()
+    regular.name = "HydroGen"
+    regular.ext = None
+    type(regular).__name__ = "PLEXOSGenerator"
+
+    imports = mocker.Mock()
+    imports.name = "can-imports_p1"
+    imports.ext = {"r2x_category": "imports"}
+    type(imports).__name__ = "PLEXOSGenerator"
+
+    regular_key = mocker.Mock(name="hydro_budget")
+    regular_key.name = "hydro_budget"
+    regular_key.features = {}
+    regular_key.initial_timestamp = None
+    regular_key.resolution = None
+    imports_key = mocker.Mock(name="hydro_budget")
+    imports_key.name = "hydro_budget"
+    imports_key.features = {}
+    imports_key.initial_timestamp = None
+    imports_key.resolution = None
+
+    regular_ts = mocker.Mock()
+    regular_ts.name = "hydro_budget"
+    regular_ts.data = [1.0, 2.0]
+    imports_ts = mocker.Mock()
+    imports_ts.name = "hydro_budget"
+    imports_ts.data = [3.0, 4.0]
+
+    sys_mock.get_component_types.return_value = [GeneratorType]
+    sys_mock.get_components.return_value = [regular, imports]
+    sys_mock.has_time_series.return_value = True
+    sys_mock.list_time_series_keys.side_effect = lambda component: (
+        [imports_key] if component is imports else [regular_key]
+    )
+    sys_mock.list_time_series.side_effect = lambda component, **_: (
+        [imports_ts] if component is imports else [regular_ts]
+    )
+
+    data_dir = tmp_path / "Data"
+    data_dir.mkdir()
+    ctx = PluginContext(config=config, system=sys_mock)
+    exporter = cast(PLEXOSExporter, PLEXOSExporter.from_context(ctx))
+    mocker.patch("r2x_plexos.exporter.get_output_directory", return_value=data_dir)
+    export_csv = mocker.patch("r2x_plexos.exporter.export_time_series_csv", return_value=Ok(None))
+
+    result = exporter.export_time_series()
+
+    assert result.is_ok()
+    exported_paths = [call.args[0].name for call in export_csv.call_args_list]
+    assert "PLEXOSGenerator_hydro_budget_Base_2024.csv" in exported_paths
+    assert "PLEXOSGenerator_imports_hydro_budget_Base_2024.csv" in exported_paths
+
+
 def test_export_time_series_prefers_resolution_match(mocker, tmp_path):
     """Exporter should pick TS variant matching ts_key resolution, not first element."""
     config = PLEXOSConfig(model_name="Base", horizon_year=2024)

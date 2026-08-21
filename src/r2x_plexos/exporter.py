@@ -1081,15 +1081,18 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                         ts_metadata["horizon_year"] = self.config.horizon_year
                     if self.weather_year is not None:
                         ts_metadata["weather_year"] = self.weather_year
-                    expected_filename = generate_csv_filename(ts_key.name, component_class, ts_metadata)
+                    is_imports = (getattr(component, "ext", None) or {}).get("r2x_category") == "imports"
+                    filename_field = f"imports_{ts_key.name}" if is_imports else ts_key.name
+                    expected_filename = generate_csv_filename(filename_field, component_class, ts_metadata)
 
                     matched_file: str | None = None
                     if expected_filename in dir_files:
                         matched_file = expected_filename
                     else:
                         # Fallback: match by class + ts name prefix when the exact file is absent
+                        fallback_field = f"imports_{safe_ts_name}" if is_imports else safe_ts_name
                         fallback_pattern = re.compile(
-                            rf"{re.escape(component_class)}_{re.escape(safe_ts_name)}_.*\.csv"
+                            rf"{re.escape(component_class)}_{re.escape(fallback_field)}_.*\.csv"
                         )
                         for filename in dir_files:
                             if fallback_pattern.match(filename):
@@ -1423,6 +1426,7 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 str(initial_ts),
                 str(resolution),
                 tuple(sorted(ts_key.features.items())),
+                (getattr(component, "ext", None) or {}).get("r2x_category") == "imports",
             )
 
         ts_metadata_sorted = sorted(ts_metadata, key=_grouping_key)
@@ -1431,7 +1435,9 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
         output_dir = get_output_directory(self.config, self.system, output_path=self.output_path)
 
         for group_key, group_items in groupby(ts_metadata_sorted, key=_grouping_key):
-            component_class, field_name, _initial_ts_str, _resolution_str, features_tuple = group_key
+            component_class, field_name, _initial_ts_str, _resolution_str, features_tuple, is_imports = (
+                group_key
+            )
             metadata_dict = dict(features_tuple)
             if self.config.model_name is not None:
                 metadata_dict["model_name"] = self.config.model_name
@@ -1443,7 +1449,8 @@ class PLEXOSExporter(Plugin[PLEXOSConfig]):
                 metadata_dict["weather_year"] = self.weather_year
             group_list = list(group_items)
 
-            filename = generate_csv_filename(field_name, component_class, metadata_dict)
+            filename_field = f"imports_{field_name}" if is_imports else field_name
+            filename = generate_csv_filename(filename_field, component_class, metadata_dict)
             filepath = output_dir / filename
             csv_filepaths.append(filepath)
 

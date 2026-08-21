@@ -19,3 +19,6 @@ working-with-memberships
 ### Exporting
 - Export R2X systems to PLEXOS XML format
 - Handling memberships
+
+For the complete Python and R2X CLI workflow, see
+[Using r2x-plexos](../tutorials/using-r2x-plexos.md).

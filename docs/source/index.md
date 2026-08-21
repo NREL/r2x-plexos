@@ -45,6 +45,9 @@ system = parser.build_system()
 - [Explanations](explanations/index.md) - Architecture and design
 - [References](references/index.md) - API and configuration reference
 
+For a complete overview of Python usage and R2X CLI pipelines, start with
+[Using r2x-plexos](tutorials/using-r2x-plexos.md).
+
 ## Resources
 
 - [API Reference](references/api.md) - Complete API documentation

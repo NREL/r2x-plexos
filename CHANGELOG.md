@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/NatLabRockies/r2x-plexos/compare/v0.3.2...v0.3.3) (2026-08-21)
+
+
+### 📚 Documentation
+
+* update documentation and package features ([#93](https://github.com/NatLabRockies/r2x-plexos/issues/93)) ([be64547](https://github.com/NatLabRockies/r2x-plexos/commit/be64547d97dbe3fd57e5c75d9d449c4eda888e1f))
+
 ## [0.3.2](https://github.com/NatLabRockies/r2x-plexos/compare/v0.3.1...v0.3.2) (2026-08-13)
 
 
